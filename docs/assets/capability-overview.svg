@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="420" viewBox="0 0 1200 420">
+  <defs>
+    <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#07111f"/>
+      <stop offset="1" stop-color="#102b46"/>
+    </linearGradient>
+    <filter id="shadow"><feDropShadow dx="0" dy="7" stdDeviation="9" flood-opacity=".35"/></filter>
+  </defs>
+  <rect width="1200" height="420" rx="26" fill="url(#background)"/>
+  <text x="56" y="62" fill="#f8fafc" font-family="Segoe UI,Arial,sans-serif" font-size="28" font-weight="700">140 项工程能力 · Implementation Baseline</text>
+  <text x="56" y="91" fill="#94a3b8" font-family="Segoe UI,Arial,sans-serif" font-size="15">所有编号均绑定可调用实现；验证状态按真实工程依赖分层</text>
+
+  <g filter="url(#shadow)">
+    <rect x="56" y="132" width="334" height="210" rx="22" fill="#0c3539" stroke="#2dd4bf"/>
+    <text x="223" y="196" text-anchor="middle" fill="#5eead4" font-family="Segoe UI,Arial,sans-serif" font-size="58" font-weight="800">105</text>
+    <text x="223" y="230" text-anchor="middle" fill="#ccfbf1" font-family="Segoe UI,Arial,sans-serif" font-size="19" font-weight="700">自动化软件验证</text>
+    <text x="223" y="259" text-anchor="middle" fill="#99f6e4" font-family="Segoe UI,Arial,sans-serif" font-size="14">Automated</text>
+    <rect x="96" y="291" width="254" height="12" rx="6" fill="#153f43"/>
+    <rect x="96" y="291" width="191" height="12" rx="6" fill="#2dd4bf"/>
+
+    <rect x="433" y="132" width="334" height="210" rx="22" fill="#3a2d1d" stroke="#f59e0b"/>
+    <text x="600" y="196" text-anchor="middle" fill="#fbbf24" font-family="Segoe UI,Arial,sans-serif" font-size="58" font-weight="800">24</text>
+    <text x="600" y="230" text-anchor="middle" fill="#fef3c7" font-family="Segoe UI,Arial,sans-serif" font-size="19" font-weight="700">硬件 / ECU 验证</text>
+    <text x="600" y="259" text-anchor="middle" fill="#fde68a" font-family="Segoe UI,Arial,sans-serif" font-size="14">Hardware Required</text>
+    <rect x="473" y="291" width="254" height="12" rx="6" fill="#4a3821"/>
+    <rect x="473" y="291" width="44" height="12" rx="6" fill="#f59e0b"/>
+
+    <rect x="810" y="132" width="334" height="210" rx="22" fill="#222743" stroke="#818cf8"/>
+    <text x="977" y="196" text-anchor="middle" fill="#a5b4fc" font-family="Segoe UI,Arial,sans-serif" font-size="58" font-weight="800">11</text>
+    <text x="977" y="230" text-anchor="middle" fill="#e0e7ff" font-family="Segoe UI,Arial,sans-serif" font-size="19" font-weight="700">外部系统适配</text>
+    <text x="977" y="259" text-anchor="middle" fill="#c7d2fe" font-family="Segoe UI,Arial,sans-serif" font-size="14">External Adapter Required</text>
+    <rect x="850" y="291" width="254" height="12" rx="6" fill="#2d3151"/>
+    <rect x="850" y="291" width="20" height="12" rx="6" fill="#818cf8"/>
+  </g>
+  <text x="600" y="386" text-anchor="middle" fill="#94a3b8" font-family="Segoe UI,Arial,sans-serif" font-size="14">动力 · 底盘 · 车身 · 三电 · 热管理 · ADAS · 网络诊断</text>
+</svg>

@@ -1,0 +1,67 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "py-canape-local"
+version = "1.0.0"
+description = "面向通用整车工程任务的 Vector CANape 自动化与分析平台"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "BAIC AI HVAC Project" }]
+dependencies = [
+  "pywin32>=306,<312; platform_system == 'Windows'",
+    "PyYAML>=6.0",
+    "packaging>=24",
+]
+
+[project.optional-dependencies]
+data = [
+    "numpy>=2.0",
+    "pandas>=2.2",
+    "pyarrow>=16",
+]
+vector-files = [
+    "asammdf>=8",
+    "cantools>=40",
+    "python-can>=4.4",
+]
+reports = [
+    "openpyxl>=3.1",
+    "python-docx>=1.1",
+]
+dev = [
+    "pytest>=8",
+    "ruff>=0.12",
+]
+all = [
+    "numpy>=2.0",
+    "pandas>=2.2",
+    "pyarrow>=16",
+    "asammdf>=8",
+    "cantools>=40",
+    "python-can>=4.4",
+    "openpyxl>=3.1",
+    "python-docx>=1.1",
+    "pytest>=8",
+    "ruff>=0.12",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM"]
+
+[project.scripts]
+py-canape = "py_canape.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+pythonpath = ["src"]

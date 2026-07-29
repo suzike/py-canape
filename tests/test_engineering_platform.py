@@ -1,0 +1,333 @@
+from __future__ import annotations
+
+import tempfile
+import unittest
+import zipfile
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+
+from py_canape import (
+    AssetManager,
+    AuditTrail,
+    CapabilityRegistry,
+    EngineeringPlatform,
+    OfflineData,
+    PermissionLevel,
+    Reporter,
+    SafetyPolicy,
+    SafetyViolationError,
+    SignalAnalyzer,
+    SignalDefinition,
+    SignalDictionary,
+    ValueRule,
+    WorkflowEngine,
+)
+from py_canape.capabilities import IMPLEMENTATIONS
+
+
+class CapabilityTests(unittest.TestCase):
+    def test_all_140_capabilities_have_callable_implementations(self):
+        matrix = Path(__file__).resolve().parents[1] / "CAPABILITIES.md"
+        registry = CapabilityRegistry.from_markdown(matrix)
+        validation = registry.validate()
+        self.assertTrue(validation["passed"], validation)
+        self.assertEqual(len(registry.list()), 140)
+        self.assertEqual(set(IMPLEMENTATIONS), set(range(1, 141)))
+        for capability in registry.list():
+            self.assertTrue(
+                callable(CapabilityRegistry.resolve(capability.implementation)),
+                capability,
+            )
+
+
+class AssetTests(unittest.TestCase):
+    def test_inventory_manifest_preflight_and_compare(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            a2l = root / "ecu.a2l"
+            a2l.write_text("test", encoding="utf-8")
+            manager = AssetManager()
+            records = manager.inventory([root])
+            self.assertEqual(records[0].kind, "a2l")
+            result = manager.preflight(
+                required_paths=[a2l],
+                output_directory=root / "out",
+                minimum_free_bytes=1,
+                required_suffixes=[".a2l"],
+            )
+            self.assertTrue(result.passed, result.errors)
+            manifest_path = root / "manifest.json"
+            before = manager.create_manifest([a2l], manifest_path)
+            a2l.write_text("changed", encoding="utf-8")
+            after = manager.create_manifest([a2l], root / "after.json")
+            self.assertEqual(
+                manager.compare_manifests(before, after)["changed"], [str(a2l)]
+            )
+
+    def test_snapshot_and_restore(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "source"
+            source.mkdir()
+            (source / "config.cna").write_text("x", encoding="utf-8")
+            manager = AssetManager()
+            snapshot = manager.snapshot(source, root / "snapshot")
+            restored = manager.restore(snapshot, root / "restored")
+            self.assertTrue((restored / "config.cna").is_file())
+
+    def test_topology(self):
+        result = AssetManager.validate_topology(
+            {"ECU": {"channel": 1, "driver": "XCP"}},
+            {"ECU": {"channel": 1, "driver": "XCP"}},
+        )
+        self.assertTrue(result["passed"])
+
+
+class OfflineTests(unittest.TestCase):
+    def test_signal_dictionary_and_parsers(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            dbc = root / "network.dbc"
+            dbc.write_text(
+                'BO_ 100 MSG: 8 ECU\n SG_ Speed : 0|16@1+ (1,0) [0|250] "km/h" ECU\n',
+                encoding="latin-1",
+            )
+            definitions = OfflineData.parse_dbc(dbc)
+            self.assertEqual(definitions[0].name, "Speed")
+            dictionary = SignalDictionary()
+            dictionary.add(definitions[0])
+            dictionary.add(
+                SignalDefinition(
+                    "CabinTemp", "ecu.a2l", unit="degC", aliases=("InsdT",)
+                )
+            )
+            self.assertEqual(dictionary.get("InsdT").name, "CabinTemp")
+            self.assertTrue(dictionary.validate()["passed"])
+
+    def test_table_resample_align_and_mapping(self):
+        offline = OfflineData()
+        frame = pd.DataFrame({"time": [0.0, 0.1, 0.2], "value": [0.0, 1.0, 2.0]})
+        result = offline.resample(frame, 0.1)
+        self.assertEqual(len(result), 3)
+        aligned = offline.align(frame, frame.rename(columns={"value": "other"}))
+        self.assertEqual(aligned["other"].tolist(), [0.0, 1.0, 2.0])
+        messages = pd.DataFrame(
+            {"channel": [1, 1], "arbitration_id": [100, 101]}
+        )
+        self.assertTrue(
+            offline.check_channel_mapping(messages, {1: [100, 101]})["passed"]
+        )
+
+    def test_table_round_trip(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "data.csv"
+            frame = pd.DataFrame({"time": [0, 1], "value": [2, 3]})
+            offline = OfflineData()
+            offline.write_table(frame, path)
+            self.assertEqual(offline.read_table(path)["value"].tolist(), [2, 3])
+
+    def test_real_mdf_adapter(self):
+        from asammdf import MDF, Signal
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "measurement.mf4"
+            signal = Signal(
+                samples=np.array([20.0, 21.0, 22.0]),
+                timestamps=np.array([0.0, 0.1, 0.2]),
+                name="CabinTemp",
+                unit="degC",
+            )
+            with MDF(version="4.10") as mdf:
+                mdf.append([signal])
+                mdf.save(path, overwrite=True)
+            offline = OfflineData()
+            metadata = offline.mdf_metadata(path)
+            self.assertIn("CabinTemp", metadata["channels"])
+            frame = offline.read_mdf(path, channels=["CabinTemp"])
+            self.assertEqual(frame["CabinTemp"].tolist(), [20.0, 21.0, 22.0])
+
+    def test_real_blf_and_dbc_adapters(self):
+        import can
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            dbc = root / "network.dbc"
+            dbc.write_text(
+                "VERSION \"\"\n"
+                "NS_ :\nBS_:\nBU_: ECU\n"
+                "BO_ 100 Vehicle: 8 ECU\n"
+                ' SG_ Speed : 0|16@1+ (0.1,0) [0|250] "km/h" ECU\n',
+                encoding="latin-1",
+            )
+            blf = root / "trace.blf"
+            writer = can.BLFWriter(blf)
+            writer.on_message_received(
+                can.Message(
+                    timestamp=1.0,
+                    arbitration_id=100,
+                    is_extended_id=False,
+                    channel=0,
+                    data=bytes([0xE8, 0x03, 0, 0, 0, 0, 0, 0]),
+                )
+            )
+            writer.stop()
+            offline = OfflineData()
+            frames = offline.read_blf(blf)
+            self.assertEqual(int(frames.iloc[0]["arbitration_id"]), 100)
+            decoded = offline.decode_blf(frames, dbc)
+            self.assertEqual(float(decoded.iloc[0]["Speed"]), 100.0)
+            self.assertEqual(offline.blf_metadata(blf)["frame_count"], 1)
+
+
+class AnalysisTests(unittest.TestCase):
+    def setUp(self):
+        self.frame = pd.DataFrame(
+            {
+                "time": [0.0, 1.0, 2.0, 3.0],
+                "request": [0, 1, 1, 1],
+                "output": [0, 0, 1, 1],
+                "state": [0, 1, 2, 1],
+                "target": [0.0, 10.0, 10.0, 10.0],
+                "actual": [0.0, 8.0, 11.0, 10.0],
+                "power_in": [1.0, 1.0, 1.0, 1.0],
+                "power_out": [0.5, 0.5, 0.5, 0.5],
+            }
+        )
+        self.analyzer = SignalAnalyzer()
+
+    def test_quality_state_timing_and_causality(self):
+        findings = self.analyzer.quality(
+            self.frame,
+            {"actual": {"minimum": 0, "maximum": 10, "max_rate": 20}},
+        )
+        self.assertEqual(findings[0].rule, "above_maximum")
+        states = self.analyzer.state_transitions(
+            self.frame, "state", allowed={(0, 1), (1, 2)}
+        )
+        self.assertEqual(len(states["illegal"]), 1)
+        timing = self.analyzer.timing(self.frame, "request", "output")
+        self.assertEqual(timing[0]["delay"], 1.0)
+        self.assertTrue(
+            self.analyzer.causality(self.frame, ["request", "output"])["passed"]
+        )
+
+    def test_conversion_control_energy_compare(self):
+        chain = self.analyzer.conversion_chain(
+            [0, 255], [-40.0, 87.5], [-40.0, 87.5], factor=0.5, offset=-40
+        )
+        self.assertTrue(chain["passed"])
+        metrics = self.analyzer.control_metrics(self.frame, "target", "actual")
+        self.assertIn("rmse", metrics)
+        energy = self.analyzer.energy_balance(
+            self.frame, ["power_in"], ["power_out"]
+        )
+        self.assertEqual(energy["efficiency"], 0.5)
+        comparison = self.analyzer.compare(
+            self.frame, self.frame.assign(actual=self.frame["actual"] + 1), ["actual"]
+        )
+        self.assertEqual(comparison["actual"]["mean_delta"], 1.0)
+
+
+class SafetyWorkflowReportingTests(unittest.TestCase):
+    def test_safety_policy(self):
+        policy = SafetyPolicy(
+            maximum_permission=PermissionLevel.CALIBRATION_WRITE,
+            object_rules={"Gain": ValueRule(0.0, 5.0)},
+            preconditions={"vehicle_speed": ValueRule(allowed=frozenset({0}))},
+            allowed_devices={"ECU"},
+        )
+        authorized = policy.authorize(
+            PermissionLevel.CALIBRATION_WRITE,
+            device="ECU",
+            target="Gain",
+            value=2.0,
+            vehicle_state={"vehicle_speed": 0},
+            confirmed=True,
+        )
+        self.assertTrue(authorized["authorized"])
+        with self.assertRaises(SafetyViolationError):
+            policy.authorize(
+                PermissionLevel.CALIBRATION_WRITE,
+                device="ECU",
+                target="Gain",
+                value=8.0,
+                vehicle_state={"vehicle_speed": 0},
+                confirmed=True,
+            )
+
+    def test_workflow_retry_dry_run_and_checkpoint(self):
+        engine = WorkflowEngine()
+        attempts = {"count": 0}
+
+        def flaky(value):
+            attempts["count"] += 1
+            if attempts["count"] == 1:
+                raise RuntimeError("retry")
+            return value * 2
+
+        engine.register("flaky", flaky)
+        definition = {
+            "variables": {"value": 3},
+            "steps": [
+                {
+                    "id": "calculate",
+                    "action": "flaky",
+                    "with": {"value": "${variables.value}"},
+                    "retries": 1,
+                }
+            ],
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            checkpoint = Path(directory) / "checkpoint.json"
+            result = engine.execute(definition, checkpoint=checkpoint)
+            self.assertEqual(result.status, "passed")
+            self.assertEqual(result.steps[0].output, 6)
+            self.assertTrue(checkpoint.is_file())
+        dry = engine.execute(definition, dry_run=True)
+        self.assertEqual(dry.steps[0].status, "dry-run")
+
+    def test_audit_evidence_and_reports(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            audit = AuditTrail(root / "audit.jsonl")
+            audit.append("measure", actor="tester", target="ECU")
+            audit.append("analyze", actor="tester", target="log.mf4")
+            self.assertTrue(audit.verify()["passed"])
+            evidence = root / "evidence.txt"
+            evidence.write_text("proof", encoding="utf-8")
+            bundle = Reporter.create_evidence_bundle(
+                root / "bundle.zip", files=[evidence], metadata={"issue": "1"}
+            )
+            with zipfile.ZipFile(bundle) as archive:
+                self.assertIn("manifest.json", archive.namelist())
+            html = Reporter.html(
+                root / "report.html", title="Report", sections=[("Result", {"ok": True})]
+            )
+            self.assertTrue(html.is_file())
+            workbook = Reporter.excel(
+                root / "report.xlsx", {"Findings": [{"status": "passed"}]}
+            )
+            self.assertTrue(workbook.is_file())
+            pdf = Reporter.generate(
+                root / "report.pdf",
+                title="Report",
+                sections=[("Result", {"ok": True})],
+            )
+            self.assertTrue(pdf.read_bytes().startswith(b"%PDF"))
+
+    def test_platform_helpers_and_domains(self):
+        platform = EngineeringPlatform()
+        self.assertEqual(len(platform.plugins.adapters), 7)
+        identity = platform.bind_identity(
+            vehicle="V1", ecu="ECU", software="S1", calibration="C1", task="T1"
+        )
+        self.assertEqual(identity["ecu"], "ECU")
+        frame = pd.DataFrame({"time": [0, 1], "a": [1, 2]})
+        derived = platform.derive_signal(frame, "b", "a * 2")
+        self.assertEqual(derived["b"].tolist(), [2, 4])
+
+
+if __name__ == "__main__":
+    unittest.main()

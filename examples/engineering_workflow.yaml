@@ -1,0 +1,19 @@
+variables:
+  project_root: ./src/py_canape
+  output_root: ./build/evidence
+
+steps:
+  - id: preflight
+    action: assets.preflight
+    with:
+      required_paths:
+        - ${variables.project_root}
+      output_directory: ${variables.output_root}
+      minimum_free_bytes: 1048576
+
+  - id: manifest
+    action: assets.manifest
+    with:
+      roots:
+        - ${variables.project_root}
+      output_file: ./build/evidence/asset-manifest.json
