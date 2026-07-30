@@ -7,6 +7,8 @@ from types import SimpleNamespace
 
 from agent2canape import (
     ApprovalStore,
+    CalibrationChangeItem,
+    CalibrationChangeSet,
     CalibrationKind,
     CalibrationParameter,
     CANapeAIToolkit,
@@ -259,6 +261,49 @@ class AIToolTests(unittest.TestCase):
     def test_measurement_state_serializes_integer_com_state(self):
         result = self.toolkit.registry.invoke("measurement_state")
         self.assertEqual(result["result"], {"state": 0, "running": False})
+
+    def test_ai_tools_expose_calibration_operations_and_pareto(self):
+        change_set = CalibrationChangeSet(
+            "ai-review",
+            "owner",
+            [
+                CalibrationChangeItem(
+                    "Gain", 2.0, "AI review", "thermal", "warm-up", "owner"
+                )
+            ],
+        )
+        path = change_set.save(Path(self.temporary.name) / "change-set.json")
+        review = self.toolkit.registry.invoke(
+            "calibration_change_set_status", {"path": str(path)}
+        )
+        self.assertEqual(review["result"]["functions"], {"thermal": 1})
+
+        pareto = self.toolkit.registry.invoke(
+            "calibration_pareto_analyze",
+            {
+                "candidates": [
+                    {
+                        "identifier": "A",
+                        "parameters": {"gain": 1.0},
+                        "metrics": {"comfort": 1.0, "energy": 2.0},
+                    },
+                    {
+                        "identifier": "B",
+                        "parameters": {"gain": 2.0},
+                        "metrics": {"comfort": 2.0, "energy": 1.0},
+                    },
+                ],
+                "objectives": [
+                    {"name": "comfort", "direction": "minimize"},
+                    {"name": "energy", "direction": "minimize"},
+                ],
+            },
+        )
+        self.assertEqual(len(pareto["result"]["pareto_front"]), 2)
+        planned = self.toolkit.planner.plan(
+            "查看标定评审", context={"path": str(path)}
+        )
+        self.assertEqual(planned["tool"], "calibration_change_set_status")
 
 
 if __name__ == "__main__":

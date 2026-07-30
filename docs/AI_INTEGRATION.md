@@ -80,6 +80,10 @@ Claude Code 的项目级 MCP 配置格式参见
 读取 VCU 的 TorqueLimit，并告诉我范围、单位和当前值
 将 TorqueCurve 的 X 轴改为 [0, 1000, 2000]，值改为 [80, 160, 220]
 导出 BMS 的 SOC_Limit 与 ChargePowerLimit 形成标定基线
+查看 P301 标定变更集的功能组、责任人、风险和审批状态
+检查 VCU 的 Working、RAM、ROM 是否已经形成持久化基线
+检查暖机 DOE 的失败 case 和证据完整性
+按温度误差与能耗分析 Pareto 标定候选
 启动测量
 向 GW 发送诊断请求 22 F1 90
 ```
@@ -115,14 +119,15 @@ Claude Code 的项目级 MCP 配置格式参见
 - 值与轴的事务写入、回读验证和失败回滚。
 
 多参数修改可先建立 `CalibrationDataset` 和 `CalibrationPlan`，完成差异预览、三方合并、
-审批、事务提交和版本归档。DOE、OFAT、Latin Hypercube 和坐标搜索可用于台架标定，
-每次实验后都会恢复基线。
+审批、事务提交和版本归档。AI/MCP 还可只读检查 `CalibrationChangeSet`、
+`CalibrationMemoryLedger` 和 `CalibrationExperimentStore`，并执行带安全边界的 Pareto
+候选分析。DOE、OFAT、Latin Hypercube 和坐标搜索可用于台架标定，每次实验后都会恢复基线。
 
 ## 风险边界
 
 | 风险等级 | 典型工具 | 执行条件 |
 |---|---|---|
-| `READ_ONLY` | 项目信息、设备清单、标定读取、刷写状态 | 可直接执行 |
+| `READ_ONLY` | 项目信息、标定读取、评审/存储/DOE 状态、Pareto、刷写状态 | 可直接执行 |
 | `PROJECT_CONTROL` | 打开项目、设备上下线、网络配置 | 外部审批 |
 | `MEASUREMENT_CONTROL` | 启停测量 | 外部审批 |
 | `CALIBRATION_WRITE` | 标定量/曲线/MAP/数据集写入 | 外部审批、范围校验、回读 |

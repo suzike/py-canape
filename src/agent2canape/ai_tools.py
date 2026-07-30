@@ -335,6 +335,22 @@ class EngineeringCommandPlanner:
         (("写入标定", "修改标定", "write calibration"), "calibration_write"),
         (("导出标定", "export calibration"), "calibration_export"),
         (("导入标定", "import calibration"), "calibration_import"),
+        (
+            ("标定评审", "变更集评审", "review calibration"),
+            "calibration_change_set_status",
+        ),
+        (
+            ("存储层状态", "ram rom 状态", "calibration memory status"),
+            "calibration_memory_status",
+        ),
+        (
+            ("doe 状态", "实验状态", "experiment status"),
+            "calibration_experiment_status",
+        ),
+        (
+            ("pareto", "帕累托", "多目标候选"),
+            "calibration_pareto_analyze",
+        ),
         (("启动测量", "start measurement"), "measurement_start"),
         (("停止测量", "stop measurement"), "measurement_stop"),
         (("测量状态", "measurement status"), "measurement_state"),
@@ -498,6 +514,76 @@ class CANapeAIToolkit:
     def _calibration_import(self, device: str, input_file: str) -> dict[str, Any]:
         self._connected()
         return self.canape.import_calibration_dataset(device, input_file, verify=True)
+
+    @staticmethod
+    def _calibration_change_set_status(
+        path: str, dataset_file: str = ""
+    ) -> dict[str, Any]:
+        from .calibration import CalibrationDataset
+        from .calibration_operations import CalibrationChangeSet
+
+        change_set = CalibrationChangeSet.load(path)
+        dataset = CalibrationDataset.load(dataset_file) if dataset_file else None
+        return change_set.summary(dataset)
+
+    @staticmethod
+    def _calibration_memory_status(path: str) -> dict[str, Any]:
+        from .calibration_operations import CalibrationMemoryLedger
+
+        return CalibrationMemoryLedger.load(path).status()
+
+    @staticmethod
+    def _calibration_experiment_status(path: str) -> dict[str, Any]:
+        from .calibration_operations import CalibrationExperimentStore
+
+        return CalibrationExperimentStore.load(path).summary()
+
+    @staticmethod
+    def _calibration_pareto_analyze(
+        candidates: list[dict[str, Any]],
+        objectives: list[dict[str, Any]],
+        safety_limits: dict[str, list[float | None]] | None = None,
+    ) -> dict[str, Any]:
+        from .calibration_operations import (
+            CalibrationCandidate,
+            CalibrationObjective,
+            ParetoCalibrationAnalysis,
+        )
+
+        parsed_candidates = [
+            CalibrationCandidate(
+                identifier=str(candidate["identifier"]),
+                parameters={
+                    name: float(value)
+                    for name, value in candidate.get("parameters", {}).items()
+                },
+                metrics={
+                    name: float(value)
+                    for name, value in candidate["metrics"].items()
+                },
+                evidence=tuple(candidate.get("evidence", ())),
+            )
+            for candidate in candidates
+        ]
+        parsed_objectives = [
+            CalibrationObjective(
+                name=str(objective["name"]),
+                direction=str(objective.get("direction", "minimize")),
+            )
+            for objective in objectives
+        ]
+        parsed_limits = {
+            name: (
+                values[0] if len(values) > 0 else None,
+                values[1] if len(values) > 1 else None,
+            )
+            for name, values in (safety_limits or {}).items()
+        }
+        return ParetoCalibrationAnalysis.analyze(
+            parsed_candidates,
+            parsed_objectives,
+            safety_limits=parsed_limits,
+        )
 
     def _measurement_start(self) -> dict[str, Any]:
         self._connected()
@@ -727,6 +813,44 @@ class CANapeAIToolkit:
                 ),
                 ToolRisk.CALIBRATION_WRITE,
                 self._calibration_import,
+            ),
+            AIToolSpec(
+                "calibration_change_set_status",
+                "读取标定变更集的功能组、页面、责任人、风险和审批摘要。",
+                _schema(
+                    {"path": "string", "dataset_file": "string"},
+                    required=("path",),
+                ),
+                ToolRisk.READ_ONLY,
+                self._calibration_change_set_status,
+            ),
+            AIToolSpec(
+                "calibration_memory_status",
+                "读取 Working/Reference/RAM/ROM 快照一致性和持久化状态。",
+                _schema({"path": "string"}, required=("path",)),
+                ToolRisk.READ_ONLY,
+                self._calibration_memory_status,
+            ),
+            AIToolSpec(
+                "calibration_experiment_status",
+                "读取 DOE 检查点、失败 case 和证据完整性。",
+                _schema({"path": "string"}, required=("path",)),
+                ToolRisk.READ_ONLY,
+                self._calibration_experiment_status,
+            ),
+            AIToolSpec(
+                "calibration_pareto_analyze",
+                "按安全边界筛选标定候选并计算多目标 Pareto 前沿。",
+                _schema(
+                    {
+                        "candidates": "array",
+                        "objectives": "array",
+                        "safety_limits": "object",
+                    },
+                    required=("candidates", "objectives"),
+                ),
+                ToolRisk.READ_ONLY,
+                self._calibration_pareto_analyze,
             ),
             AIToolSpec(
                 "measurement_start",

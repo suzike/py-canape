@@ -41,6 +41,8 @@ Workflow Engine ---- Safety Policy ---- Audit Trail
 
 - `canape.py`：在线会话、设备、测量、标定、诊断、刷写和网络；
 - `calibration.py`：标定对象、数据集、版本、变更事务、实验设计和优化；
+- `calibration_formats.py`：A2L 语义目录和 CDFX/DCM/PAR 标定数据交换；
+- `calibration_operations.py`：变更评审、存储层台账、DOE 恢复、多 ECU 事务和 Pareto；
 - `ai_tools.py`：AI 工具 Schema、自然语言计划、跨进程审批和安全调度；
 - `mcp_server.py`：Codex、Claude Code 等客户端使用的本地 stdio MCP Server；
 - `assets.py`：环境清单、工程资产、版本哈希、预检、快照和恢复；

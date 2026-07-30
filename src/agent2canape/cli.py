@@ -201,6 +201,33 @@ def _calibration_verify(
     return 0 if result["passed"] else 1
 
 
+def _calibration_review(path: str, dataset_path: str | None) -> int:
+    from .calibration import CalibrationDataset
+    from .calibration_operations import CalibrationChangeSet
+
+    change_set = CalibrationChangeSet.load(path)
+    dataset = CalibrationDataset.load(dataset_path) if dataset_path else None
+    result = change_set.summary(dataset)
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0 if not result["errors"] else 1
+
+
+def _calibration_memory_status(path: str) -> int:
+    from .calibration_operations import CalibrationMemoryLedger
+
+    result = CalibrationMemoryLedger.load(path).status()
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0 if result["persistent"] else 1
+
+
+def _calibration_experiment_status(path: str) -> int:
+    from .calibration_operations import CalibrationExperimentStore
+
+    result = CalibrationExperimentStore.load(path).summary()
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0 if result["passed"] else 1
+
+
 def _ai_toolkit(approval_file: str | None = None) -> CANapeAIToolkit:
     return CANapeAIToolkit(CANape(), approvals=ApprovalStore(approval_file))
 
@@ -299,6 +326,19 @@ def main(argv: list[str] | None = None) -> int:
     calibration_verify.add_argument("--a2l", type=str)
     calibration_verify.add_argument("--hex", dest="hex_file", type=str)
     calibration_verify.add_argument("--expected", default="{}", type=str)
+    calibration_review = subparsers.add_parser(
+        "calibration-review", help="查看标定变更集的功能组、页面、责任人和审批状态"
+    )
+    calibration_review.add_argument("path", type=str)
+    calibration_review.add_argument("--dataset", type=str)
+    memory_status = subparsers.add_parser(
+        "calibration-memory-status", help="检查 working/RAM/ROM 持久化状态"
+    )
+    memory_status.add_argument("path", type=str)
+    experiment_status = subparsers.add_parser(
+        "calibration-experiment-status", help="检查 DOE 断点、结果和证据完整性"
+    )
+    experiment_status.add_argument("path", type=str)
     ai_tools = subparsers.add_parser("ai-tools", help="列出 AI/MCP 工具和 JSON Schema")
     ai_tools.add_argument("--approval-file", type=str)
     ai_plan = subparsers.add_parser("ai-plan", help="把自然语言请求转换为工程工具计划")
@@ -348,6 +388,12 @@ def main(argv: list[str] | None = None) -> int:
             hex_file=args.hex_file,
             expected=args.expected,
         )
+    if args.command == "calibration-review":
+        return _calibration_review(args.path, args.dataset)
+    if args.command == "calibration-memory-status":
+        return _calibration_memory_status(args.path)
+    if args.command == "calibration-experiment-status":
+        return _calibration_experiment_status(args.path)
     if args.command == "ai-tools":
         return _ai_tools(args.approval_file)
     if args.command == "ai-plan":

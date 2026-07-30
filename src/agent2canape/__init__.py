@@ -36,6 +36,25 @@ from .calibration_formats import (
     A2LRecordLayout,
     CalibrationDatasetIO,
 )
+from .calibration_operations import (
+    CalibrationCandidate,
+    CalibrationChangeItem,
+    CalibrationChangeSet,
+    CalibrationExperimentRunner,
+    CalibrationExperimentStore,
+    CalibrationMemoryLayer,
+    CalibrationMemoryLedger,
+    CalibrationObjective,
+    CalibrationReview,
+    ChangeSetStatus,
+    ECUCalibrationTask,
+    ExperimentCaseRecord,
+    ExperimentCaseStatus,
+    ExperimentEvidence,
+    MultiECUCalibrationCoordinator,
+    ParetoCalibrationAnalysis,
+    ReviewDecision,
+)
 from .canape import CANape
 from .capabilities import Capability, CapabilityRegistry
 from .errors import (
@@ -101,6 +120,23 @@ __all__ = [
     "A2LAxisDescriptor",
     "A2LCompuMethod",
     "A2LRecordLayout",
+    "CalibrationChangeItem",
+    "CalibrationChangeSet",
+    "CalibrationReview",
+    "ChangeSetStatus",
+    "ReviewDecision",
+    "CalibrationMemoryLayer",
+    "CalibrationMemoryLedger",
+    "ExperimentEvidence",
+    "ExperimentCaseRecord",
+    "ExperimentCaseStatus",
+    "CalibrationExperimentStore",
+    "CalibrationExperimentRunner",
+    "ECUCalibrationTask",
+    "MultiECUCalibrationCoordinator",
+    "CalibrationObjective",
+    "CalibrationCandidate",
+    "ParetoCalibrationAnalysis",
     "AssetManager",
     "AssetRecord",
     "PreflightResult",
@@ -144,4 +180,4 @@ __all__ = [
     "TaskInfo",
 ]
 
-__version__ = "3.1.0"
+__version__ = "3.2.0"
