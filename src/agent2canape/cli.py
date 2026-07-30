@@ -320,6 +320,23 @@ def _ai_call(
     return 0
 
 
+def _mcp_doctor(
+    project: str | None,
+    *,
+    live_canape: bool,
+    skip_clients: bool,
+) -> int:
+    from .mcp_diagnostics import diagnostic_json, run_mcp_diagnostics
+
+    report = run_mcp_diagnostics(
+        project=project,
+        check_clients=not skip_clients,
+        live_canape=live_canape,
+    )
+    print(diagnostic_json(report))
+    return 0 if report.passed else 1
+
+
 def main(argv: list[str] | None = None) -> int:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
@@ -334,6 +351,21 @@ def main(argv: list[str] | None = None) -> int:
     subparsers.add_parser("capabilities", help="验证并列出 140 项能力注册表")
     info = subparsers.add_parser("project-info", help="只读打开项目并列出设备")
     info.add_argument("project", type=str)
+    mcp_doctor = subparsers.add_parser(
+        "mcp-doctor",
+        help="分层检查 Codex、Claude Code、MCP 环境和 CANape 只读调用",
+    )
+    mcp_doctor.add_argument("--project", type=str)
+    mcp_doctor.add_argument(
+        "--live-canape",
+        action="store_true",
+        help="实际打开 CANape 工程并执行只读检查",
+    )
+    mcp_doctor.add_argument(
+        "--skip-clients",
+        action="store_true",
+        help="跳过 Codex 和 Claude Code 客户端注册检查",
+    )
     preflight = subparsers.add_parser("preflight", help="检查工程路径和输出目录")
     preflight.add_argument("paths", nargs="*", type=str)
     preflight.add_argument("--output", type=str)
@@ -418,6 +450,12 @@ def main(argv: list[str] | None = None) -> int:
         return _check()
     if args.command == "project-info":
         return _project_info(args.project)
+    if args.command == "mcp-doctor":
+        return _mcp_doctor(
+            args.project,
+            live_canape=args.live_canape,
+            skip_clients=args.skip_clients,
+        )
     if args.command == "capabilities":
         return _capabilities()
     if args.command == "preflight":

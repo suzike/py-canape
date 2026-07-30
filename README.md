@@ -9,7 +9,7 @@
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![CANape](https://img.shields.io/badge/CANape-17.x-0EA5E9)](#canape-17-兼容性)
 [![Capabilities](https://img.shields.io/badge/Capabilities-140%2F140-14B8A6)](./CAPABILITIES.md)
-[![Tests](https://img.shields.io/badge/Tests-111%20passed-22C55E)](#质量与验证)
+[![Tests](https://img.shields.io/badge/Tests-117%20passed-22C55E)](#质量与验证)
 [![License](https://img.shields.io/badge/License-MIT-F59E0B)](./LICENSE)
 
 **ECU 标定 · AI Agent · 在线测量 · 离线分析 · 安全门禁 · 工程闭环**
@@ -214,7 +214,12 @@ python -m venv .venv
 ```powershell
 .\.venv\Scripts\agent2canape.exe check
 .\.venv\Scripts\agent2canape.exe capabilities
+.\.venv\Scripts\agent2canape.exe mcp-doctor --project D:\CANapeProjects\Vehicle
 ```
+
+`mcp-doctor` 分层检查 Python/MCP 依赖、Windows COM 环境、默认工程、Codex 和
+Claude Code 注册状态。增加 `--live-canape` 后会实际打开工程并执行只读调用；
+该选项不会进行标定写入、诊断请求或刷写。
 
 ### 打开 CANape 项目
 
@@ -336,11 +341,12 @@ CANape 的 vMDM 附属进程可能在 `Quit` 后继续驻留。若短时间内�
 
 ```text
 Ruff                    All checks passed
-Pytest                  111 passed
+Pytest                  117 passed
 Capability contracts    140 / 140, unique and resolvable
 Dependency check        No broken requirements
 MDF / BLF / DBC         Real file round-trip passed
 MCP                     FastMCP server and tool discovery passed
+MCP clients             Codex model call + CANape read-only project call passed
 Workflow                Validate + Dry-run passed
 ```
 

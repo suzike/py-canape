@@ -1,6 +1,9 @@
 # 复制到受信任项目的 .codex/config.toml 后替换机器路径。
 [mcp_servers.Agent2Canape]
 command = "E:/path/to/Agent2Canape/.venv/Scripts/agent2canape-mcp.exe"
+env_vars = ["WINDIR", "SYSTEMROOT"]
+startup_timeout_sec = 120.0
+tool_timeout_sec = 120.0
 
 [mcp_servers.Agent2Canape.env]
 AGENT2CANAPE_APPROVAL_STORE = "E:/secure/Agent2Canape-approvals.json"

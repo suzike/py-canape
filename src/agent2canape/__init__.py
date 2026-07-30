@@ -1,5 +1,7 @@
 """Vector CANape 的 Python COM 控制接口。"""
 
+__version__ = "3.4.2"
+
 from .ai_tools import (
     AIActionPlan,
     AIToolRegistry,
@@ -89,6 +91,12 @@ from .errors import (
     OptionalDependencyError,
     SafetyViolationError,
     WorkflowError,
+)
+from .mcp_diagnostics import (
+    MCPDiagnosticCheck,
+    MCPDiagnosticReport,
+    diagnostic_json,
+    run_mcp_diagnostics,
 )
 from .models import (
     CalibrationObjectInfo,
@@ -218,6 +226,8 @@ __all__ = [
     "FlashStateInfo",
     "RecorderInfo",
     "TaskInfo",
+    "MCPDiagnosticCheck",
+    "MCPDiagnosticReport",
+    "run_mcp_diagnostics",
+    "diagnostic_json",
 ]
-
-__version__ = "3.4.1"

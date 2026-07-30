@@ -1,5 +1,18 @@
 # 变更记录
 
+## 3.4.2 - 2026-07-30
+
+- 新增 `agent2canape mcp-doctor`，分层检查 MCP SDK、pywin32、默认工程、Windows COM
+  环境、Codex 注册、Claude Code 连接和模型端点类型；
+- 支持 `--live-canape` 真实打开工程并执行只读项目信息与设备列表调用，不触发 ECU
+  标定写入、诊断或刷写；
+- 针对 CANape 17 偶发的 Asap3 句柄和共享内存启动竞态执行一次受控重试，并在报告中
+  明确记录尝试次数与是否由瞬态故障恢复；
+- 诊断报告仅输出模型端点主机和认证存在状态，不输出令牌值或客户端原始错误流；
+- Codex 与 Claude Code 示例补充 `WINDIR`/`SYSTEMROOT`，Codex 冷启动与工具超时统一
+  提升到 120 秒；
+- 新增 MCP 诊断、客户端配置缺口、敏感信息保护与 CLI 测试，累计 117 项自动化测试。
+
 ## 3.4.1 - 2026-07-30
 
 - MCP 新增 `AGENT2CANAPE_DEFAULT_PROJECT`，在第一个 CANape 工具调用时懒加载受信任工程，

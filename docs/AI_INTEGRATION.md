@@ -16,6 +16,17 @@ python -m venv .venv
 
 MCP Server 使用 stdio，正常启动后不会向标准输出打印日志；MCP 协议消息由客户端管理。
 
+安装后可先运行分层诊断：
+
+```powershell
+agent2canape mcp-doctor --project D:\CANapeProjects\Vehicle
+agent2canape mcp-doctor --project D:\CANapeProjects\Vehicle --live-canape
+```
+
+第一条只检查依赖、环境、工程与客户端注册；第二条还会实际启动 CANape、读取工程信息
+和设备数量后退出，不执行标定写入、诊断或刷写。输出为不包含令牌值的 JSON，适合
+Codex、Claude Code 和 CI 收集。
+
 ## Codex
 
 推荐用当前 Codex CLI 直接添加项目的本地 MCP Server：
@@ -34,6 +45,9 @@ codex mcp get Agent2Canape
 ```toml
 [mcp_servers.Agent2Canape]
 command = "E:/path/to/Agent2Canape/.venv/Scripts/agent2canape-mcp.exe"
+env_vars = ["WINDIR", "SYSTEMROOT"]
+startup_timeout_sec = 120.0
+tool_timeout_sec = 120.0
 
 [mcp_servers.Agent2Canape.env]
 AGENT2CANAPE_APPROVAL_STORE = "E:/secure/Agent2Canape-approvals.json"
@@ -56,7 +70,9 @@ Claude Code 支持项目级 `.mcp.json`。复制示例并替换路径：
       "args": [],
       "env": {
         "AGENT2CANAPE_APPROVAL_STORE": "E:/secure/Agent2Canape-approvals.json",
-        "AGENT2CANAPE_DEFAULT_PROJECT": "D:/CANapeProjects/Vehicle"
+        "AGENT2CANAPE_DEFAULT_PROJECT": "D:/CANapeProjects/Vehicle",
+        "SYSTEMROOT": "C:/Windows",
+        "WINDIR": "C:/Windows"
       }
     }
   }
@@ -70,7 +86,9 @@ claude mcp add Agent2Canape `
   E:\path\to\Agent2Canape\.venv\Scripts\agent2canape-mcp.exe `
   --scope project `
   -e AGENT2CANAPE_APPROVAL_STORE=E:\secure\Agent2Canape-approvals.json `
-  -e AGENT2CANAPE_DEFAULT_PROJECT=D:\CANapeProjects\Vehicle
+  -e AGENT2CANAPE_DEFAULT_PROJECT=D:\CANapeProjects\Vehicle `
+  -e SYSTEMROOT=C:\Windows `
+  -e WINDIR=C:\Windows
 
 claude mcp get Agent2Canape
 ```
@@ -83,6 +101,10 @@ CANape COM 的工具调用到来时懒加载该工程；单纯的工具发现和
 CANape。CANape 17 不应在尚未加载工程时读取 `WorkingDirectory`，因此需要直接调用
 `project_info`、设备或标定工具的客户端应配置默认工程，或者先完成 `project_open`
 的外部审批流程。
+
+Windows 上应确保 MCP 子进程继承 `WINDIR` 和 `SYSTEMROOT`。部分 AI 客户端会裁剪
+stdio Server 环境；服务可以正常握手，但 CANape COM 冷启动会失败。CANape 冷启动也
+可能超过客户端默认的30秒工具超时，因此 Codex 示例显式配置120秒。
 
 对于使用 MCP 延迟工具发现不完整的第三方模型代理，或只希望向某个项目暴露最小权限
 工具集，可配置逗号分隔的注册表工具名：

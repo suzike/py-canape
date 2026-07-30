@@ -6,7 +6,9 @@
       "args": [],
       "env": {
         "AGENT2CANAPE_APPROVAL_STORE": "E:/secure/Agent2Canape-approvals.json",
-        "AGENT2CANAPE_DEFAULT_PROJECT": "D:/CANapeProjects/Vehicle"
+        "AGENT2CANAPE_DEFAULT_PROJECT": "D:/CANapeProjects/Vehicle",
+        "SYSTEMROOT": "C:/Windows",
+        "WINDIR": "C:/Windows"
       }
     }
   }
