@@ -13,7 +13,7 @@ def main() -> int:
     parser.add_argument(
         "--project",
         default=r"D:\Software\Canape17\Examples\OfflineAnalysis",
-        help="CANape 示例项目目录",
+        help="CANape 示例项目目录或 CNA 文件",
     )
     args = parser.parse_args()
 

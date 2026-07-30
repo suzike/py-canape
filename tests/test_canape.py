@@ -33,11 +33,27 @@ class FakeCollection:
 
 
 class FakeCalibration:
-    def __init__(self, name, value):
+    def __init__(self, name, value, *, x_axis=None, y_axis=None):
         self.Name = name
         self.Value = value
         self.ValueVariant = value
         self.RepresentationType = 1
+        self.Type = 2 if y_axis else 1 if x_axis else 0
+        self.Caltype = self.Type
+        self.XDim = len(x_axis or ())
+        self.YDim = len(y_axis or ())
+        self.Unit = "%"
+        self.Min = 0.0
+        self.Max = 100.0
+        self.Address = 0x1000
+        self.Conversion = "linear"
+        self.Comment = "test"
+        axes = []
+        if x_axis is not None:
+            axes.append(FakeAxis("X", x_axis))
+        if y_axis is not None:
+            axes.append(FakeAxis("Y", y_axis))
+        self.AxisObjects = FakeCollection(*axes)
 
     def ReadVariant(self):
         return self.Value
@@ -46,6 +62,23 @@ class FakeCalibration:
         if getattr(self, "FailWrite", False):
             raise RuntimeError(f"{self.Name} write failed")
         self.ValueVariant = self.Value
+
+
+class FakeAxis:
+    def __init__(self, name, value):
+        self.Name = name
+        self.Value = list(value)
+        self.ValueVariant = list(value)
+        self.RepresentationType = 1
+        self.Unit = "axis"
+        self.Dimension = len(value)
+        self.Type = 0
+
+    def ReadVariant(self):
+        return list(self.Value)
+
+    def Write(self):
+        self.ValueVariant = list(self.Value)
 
 
 class FakeMeasurement:
@@ -93,6 +126,15 @@ def make_fake_app():
     )
     calibration = FakeCalibration("Gain", 1.0)
     offset = FakeCalibration("Offset", 0.0)
+    curve = FakeCalibration(
+        "TorqueCurve", [10.0, 20.0, 30.0], x_axis=[1000.0, 2000.0, 3000.0]
+    )
+    map_value = FakeCalibration(
+        "TorqueMap",
+        [[10.0, 20.0], [30.0, 40.0]],
+        x_axis=[1000.0, 2000.0],
+        y_axis=[0.5, 1.0],
+    )
     device = SimpleNamespace(
         Name="ECU",
         DriverType="XCP",
@@ -100,13 +142,15 @@ def make_fake_app():
         IsOnline=False,
         DatabaseFilename="ecu.a2l",
         Tasks=FakeCollection(task),
-        CalibrationObjects=FakeCollection(calibration, offset),
+        CalibrationObjects=FakeCollection(calibration, offset, curve, map_value),
         Databases=FakeCollection(SimpleNamespace(Name="ecu.a2l")),
         GoOnline=lambda download: setattr(device, "IsOnline", True),
         GoOffline=lambda: setattr(device, "IsOnline", False),
         ReadMemory=read_memory,
         WriteMemory=write_memory,
     )
+    device.Upload = lambda path: Path(path).write_bytes(b"hex")
+    device.Download = lambda path: setattr(device, "Downloaded", Path(path).read_bytes())
     recorder = SimpleNamespace(
         Name="Recorder1", State=1, Type=0, MDFFilename="", Pause=lambda paused: None
     )
@@ -173,6 +217,7 @@ def make_fake_app():
     app_version = SimpleNamespace(
         Main=17, Sub=0, Release=31, Description="CANape"
     )
+    open_arguments = []
     app = SimpleNamespace(
         Name="Vector Application for CANape",
         Version=version,
@@ -191,6 +236,8 @@ def make_fake_app():
         RunScript=lambda path: None,
         Quit=lambda: None,
         QuitNonModal=lambda: None,
+        Open2=lambda *arguments: open_arguments.append(arguments),
+        OpenArguments=open_arguments,
     )
     return app
 
@@ -218,6 +265,13 @@ class CANapeTests(unittest.TestCase):
             "2.3 (Windows95/WindowsNT)",
         )
         self.assertEqual(self.canape.get_project_info()["cna_filename"], "Config.cna")
+
+    def test_open_translates_non_modal_to_com_modal_mode(self):
+        with tempfile.TemporaryDirectory() as directory:
+            self.canape.open(directory, non_modal=True)
+            self.assertFalse(self.app.OpenArguments[-1][4])
+            self.canape.open(directory, non_modal=False)
+            self.assertTrue(self.app.OpenArguments[-1][4])
 
     def test_measurement_start_stop(self):
         self.assertTrue(self.canape.start_measurement())
@@ -276,6 +330,19 @@ class CANapeTests(unittest.TestCase):
         )
         self.assertEqual(self.canape.list_device_databases("ECU"), ["ecu.a2l"])
 
+    def test_device_data_upload_and_download(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            uploaded = root / "uploaded.hex"
+            self.canape.transfer_device_data("ECU", uploaded, direction="upload")
+            self.assertEqual(uploaded.read_bytes(), b"hex")
+            source = root / "download.hex"
+            source.write_bytes(b"new")
+            self.canape.transfer_device_data("ECU", source, direction="download")
+            self.assertEqual(self.canape.get_device("ECU").Downloaded, b"new")
+            with self.assertRaises(ValueError):
+                self.canape.transfer_device_data("ECU", source, direction="invalid")
+
     def test_calibration_read_write(self):
         self.assertEqual(self.canape.read_calibration_value("ECU", "Gain"), 1.0)
         self.assertEqual(self.canape.write_calibration_value("ECU", "Gain", 2.5), 2.5)
@@ -290,6 +357,36 @@ class CANapeTests(unittest.TestCase):
         )
         self.canape.restore_calibration_snapshot("ECU", before)
         self.assertEqual(self.canape.read_calibration_value("ECU", "Gain"), 1.0)
+
+    def test_curve_and_map_axes_round_trip(self):
+        curve = self.canape.read_calibration_parameter("ECU", "TorqueCurve")
+        self.assertEqual(curve.kind.value, "curve")
+        self.assertEqual(curve.x_axis, [1000.0, 2000.0, 3000.0])
+        curve.value = [15.0, 25.0, 35.0]
+        curve.x_axis = [900.0, 1900.0, 2900.0]
+        actual = self.canape.write_calibration_parameter("ECU", curve)
+        self.assertEqual(actual.value, [15.0, 25.0, 35.0])
+        self.assertEqual(actual.x_axis, [900.0, 1900.0, 2900.0])
+
+        parameter = self.canape.read_calibration_parameter("ECU", "TorqueMap")
+        self.assertEqual(parameter.kind.value, "map")
+        self.assertEqual(parameter.y_axis, [0.5, 1.0])
+
+    def test_calibration_dataset_export_import(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "dataset.json"
+            dataset = self.canape.export_calibration_dataset(
+                "ECU",
+                ["Gain", "TorqueCurve", "TorqueMap"],
+                output,
+                identity={"software": "1.0", "calibration": "A"},
+            )
+            self.assertTrue(output.is_file())
+            self.assertEqual(dataset.identity["software"], "1.0")
+            dataset.parameters["Gain"].value = 2.0
+            dataset.save(output)
+            result = self.canape.import_calibration_dataset("ECU", output)
+            self.assertEqual(result["Gain"].value, 2.0)
 
     def test_calibration_batch_rolls_back_attempted_values(self):
         offset = self.canape.get_device("ECU").CalibrationObjects.Item("Offset")
@@ -318,6 +415,7 @@ class CANapeTests(unittest.TestCase):
         self.assertEqual(self.canape.list_networks()[0]["name"], "CAN1")
         self.canape.activate_network("CAN1")
         self.assertTrue(self.canape.list_networks()[0]["active"])
+        self.assertTrue(self.canape.configure_network("CAN1", active=True)["active"])
         self.canape.start_script("Smoke", command_line="--dry-run")
         self.assertEqual(self.canape.list_scripts()[0]["state"], 1)
         self.canape.stop_script("Smoke")
@@ -333,6 +431,10 @@ class CANapeTests(unittest.TestCase):
             "ECU", (0x22, 0xF1, 0x90)
         )
         self.assertEqual(raw[0].stream, (0x62, 0xF1, 0x90))
+        self.assertEqual(self.canape.set_tester_present("ECU", enabled=True), 1)
+        self.assertEqual(self.canape.control_flash("ECU", action="stop").progress, 100)
+        with self.assertRaises(ValueError):
+            self.canape.control_flash("ECU", action="start")
         self.assertEqual(self.canape.get_flash_state("ECU").progress, 100)
         self.assertEqual(self.canape.list_security_profiles()[0]["name"], "Default")
 

@@ -20,9 +20,11 @@
 ## 高层架构
 
 ```text
-CLI / Python API
+Codex / Claude Code / CLI / Python API
        |
        v
+MCP + Action Plan --- External Approval
+       |
 Workflow Engine ---- Safety Policy ---- Audit Trail
        |                    |
        +----------+---------+
@@ -37,6 +39,9 @@ Workflow Engine ---- Safety Policy ---- Audit Trail
 ## 模块职责
 
 - `canape.py`：在线会话、设备、测量、标定、诊断、刷写和网络；
+- `calibration.py`：标定对象、数据集、版本、变更事务、实验设计和优化；
+- `ai_tools.py`：AI 工具 Schema、自然语言计划、跨进程审批和安全调度；
+- `mcp_server.py`：Codex、Claude Code 等客户端使用的本地 stdio MCP Server；
 - `assets.py`：环境清单、工程资产、版本哈希、预检、快照和恢复；
 - `offline.py`：数据格式适配、信号字典、重采样、时间对齐和导出；
 - `analysis.py`：质量检查、状态机、因果链、控制指标和对比；
@@ -53,7 +58,8 @@ Workflow Engine ---- Safety Policy ---- Audit Trail
 | CANape/许可证/硬件不可用 | 预检失败并阻止在线步骤 |
 | 可选解析器缺失 | 抛出带 extra 名称的依赖错误 |
 | ECU 写入越界 | SafetyPolicy 在 COM 调用前拒绝 |
-| 工作流中断 | 保存检查点；仅允许幂等或显式恢复步骤重试 |
+| 工作流中断 | 保存检查点并逆序执行显式补偿；失败动作分类后停止 |
+| AI 参数被篡改或重复执行 | SHA-256 绑定工具与参数，原子认领，计划只使用一次 |
+| 曲线/MAP 轴或维度错误 | 写入前校验轴递增、矩阵形状和上下限 |
 | 报告生成失败 | 保留原始 JSON 审计和证据文件 |
 | 企业系统不可用 | 外部适配器失败不影响本地证据包 |
-

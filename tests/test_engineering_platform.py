@@ -31,11 +31,19 @@ class CapabilityTests(unittest.TestCase):
     def test_all_140_capabilities_have_callable_implementations(self):
         matrix = Path(__file__).resolve().parents[1] / "CAPABILITIES.md"
         registry = CapabilityRegistry.from_markdown(matrix)
+        packaged = CapabilityRegistry.default()
         validation = registry.validate()
         self.assertTrue(validation["passed"], validation)
         self.assertEqual(len(registry.list()), 140)
+        self.assertEqual(validation["unique_contracts"], 140)
         self.assertEqual(set(IMPLEMENTATIONS), set(range(1, 141)))
+        self.assertEqual(
+            [item.name for item in packaged.list()],
+            [item.name for item in registry.list()],
+        )
         for capability in registry.list():
+            self.assertEqual(capability.contract_id, f"PYC-{capability.id:03d}")
+            self.assertIn(capability.name, capability.acceptance)
             self.assertTrue(
                 callable(CapabilityRegistry.resolve(capability.implementation)),
                 capability,
@@ -84,6 +92,19 @@ class AssetTests(unittest.TestCase):
         )
         self.assertTrue(result["passed"])
 
+    def test_dependency_gate_and_environment_providers(self):
+        manager = AssetManager()
+        inventory = manager.environment_inventory(
+            {
+                "canape": {"version": "17.0"},
+                "license": lambda: {"available": True},
+            }
+        )
+        self.assertEqual(inventory["canape"]["version"], "17.0")
+        self.assertTrue(inventory["license"]["available"])
+        result = manager.preflight(required_commands=["python"])
+        self.assertTrue(result.passed, result.errors)
+
 
 class OfflineTests(unittest.TestCase):
     def test_signal_dictionary_and_parsers(self):
@@ -128,6 +149,34 @@ class OfflineTests(unittest.TestCase):
             offline.write_table(frame, path)
             self.assertEqual(offline.read_table(path)["value"].tolist(), [2, 3])
 
+    def test_odx_and_time_source_report(self):
+        with tempfile.TemporaryDirectory() as directory:
+            odx = Path(directory) / "diagnostics.odx"
+            odx.write_text(
+                "<ODX><DIAG-SERVICE ID='S1'><SHORT-NAME>ReadVIN</SHORT-NAME>"
+                "</DIAG-SERVICE></ODX>",
+                encoding="utf-8",
+            )
+            definitions = OfflineData.parse_odx(odx)
+            self.assertEqual(definitions[0].name, "ReadVIN")
+        report = OfflineData.time_source_report(
+            {
+                "canape": {
+                    "clock_domain": "ptp",
+                    "sync_method": "ptp",
+                    "offset_seconds": 0.0,
+                    "drift_ppm": 1.0,
+                },
+                "canoe": {
+                    "clock_domain": "ptp",
+                    "sync_method": "ptp",
+                    "offset_seconds": 0.01,
+                    "drift_ppm": 2.0,
+                },
+            }
+        )
+        self.assertTrue(report["passed"], report)
+
     def test_real_mdf_adapter(self):
         from asammdf import MDF, Signal
 
@@ -147,6 +196,8 @@ class OfflineTests(unittest.TestCase):
             self.assertIn("CabinTemp", metadata["channels"])
             frame = offline.read_mdf(path, channels=["CabinTemp"])
             self.assertEqual(frame["CabinTemp"].tolist(), [20.0, 21.0, 22.0])
+            output = offline.extract_mdf(path, Path(directory) / "extract.csv")
+            self.assertTrue(output.is_file())
 
     def test_real_blf_and_dbc_adapters(self):
         import can
@@ -229,6 +280,25 @@ class AnalysisTests(unittest.TestCase):
         )
         self.assertEqual(comparison["actual"]["mean_delta"], 1.0)
 
+    def test_strategy_and_explainable_anomaly_clusters(self):
+        result = self.analyzer.strategy_validation(
+            self.frame,
+            "request",
+            "output",
+            activation_timeout=0.5,
+        )
+        self.assertFalse(result["passed"])
+        findings = self.analyzer.quality(
+            self.frame,
+            {
+                "actual": {"maximum": 10},
+                "power_in": {"maximum": 0.5},
+            },
+        )
+        clusters = self.analyzer.cluster_anomalies(findings)
+        self.assertGreaterEqual(clusters[0]["score"], 2)
+        self.assertIn("explanation", clusters[0])
+
 
 class SafetyWorkflowReportingTests(unittest.TestCase):
     def test_safety_policy(self):
@@ -287,6 +357,66 @@ class SafetyWorkflowReportingTests(unittest.TestCase):
             self.assertTrue(checkpoint.is_file())
         dry = engine.execute(definition, dry_run=True)
         self.assertEqual(dry.steps[0].status, "dry-run")
+        self.assertEqual(result.exit_code, 0)
+        self.assertEqual(result.machine_summary()["passed"], 1)
+
+    def test_workflow_compensation_and_multi_ecu(self):
+        engine = WorkflowEngine()
+        actions = []
+        engine.register("write", lambda value: actions.append(("write", value)), write=True)
+        engine.register("restore", lambda value: actions.append(("restore", value)), write=True)
+
+        def fail():
+            raise RuntimeError("boom")
+
+        engine.register("fail", fail)
+        result = engine.execute(
+            {
+                "steps": [
+                    {
+                        "id": "change",
+                        "action": "write",
+                        "with": {"value": 2},
+                        "compensate": {"action": "restore", "with": {"value": 1}},
+                    },
+                    {"id": "fail", "action": "fail"},
+                ]
+            },
+            operator="tester",
+        )
+        self.assertEqual(result.status, "failed")
+        self.assertEqual(actions, [("write", 2), ("restore", 1)])
+        self.assertEqual(result.compensation_steps[0].status, "passed")
+        definition = engine.multi_ecu_definition(["VCU", "BMS"])
+        self.assertEqual(len(definition["steps"]), 4)
+
+    def test_workflow_postcondition_failure_compensates_and_ci_fails(self):
+        engine = WorkflowEngine()
+        actions = []
+        engine.register("change", lambda: {"ok": False}, write=True)
+        engine.register("restore", lambda: actions.append("restored"), write=True)
+        result = engine.execute(
+            {
+                "steps": [
+                    {
+                        "id": "change",
+                        "action": "change",
+                        "compensate": {"action": "restore"},
+                        "postconditions": [
+                            {
+                                "path": "steps.change.output.ok",
+                                "operator": "eq",
+                                "value": True,
+                            }
+                        ],
+                    }
+                ]
+            }
+        )
+        self.assertEqual(result.status, "failed")
+        self.assertEqual(result.steps[0].error_category, "validation")
+        self.assertEqual(actions, ["restored"])
+        self.assertEqual(engine.ci_summary(result)["exit_code"], 1)
 
     def test_audit_evidence_and_reports(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -320,6 +450,9 @@ class SafetyWorkflowReportingTests(unittest.TestCase):
     def test_platform_helpers_and_domains(self):
         platform = EngineeringPlatform()
         self.assertEqual(len(platform.plugins.adapters), 7)
+        for adapter in platform.plugins.adapters.values():
+            self.assertTrue(adapter.validate()["passed"])
+            self.assertTrue(adapter.metrics())
         identity = platform.bind_identity(
             vehicle="V1", ecu="ECU", software="S1", calibration="C1", task="T1"
         )

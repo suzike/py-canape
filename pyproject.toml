@@ -4,15 +4,16 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "py-canape-local"
-version = "1.0.0"
+version = "2.0.0"
 description = "面向通用整车工程任务的 Vector CANape 自动化与分析平台"
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "MIT" }
-authors = [{ name = "BAIC AI HVAC Project" }]
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "py-canape contributors" }]
 dependencies = [
   "pywin32>=306,<312; platform_system == 'Windows'",
-    "PyYAML>=6.0",
+  "PyYAML>=6.0",
     "packaging>=24",
 ]
 
@@ -31,6 +32,9 @@ reports = [
     "openpyxl>=3.1",
     "python-docx>=1.1",
 ]
+ai = [
+    "mcp>=1.12,<2",
+]
 dev = [
     "pytest>=8",
     "ruff>=0.12",
@@ -44,6 +48,7 @@ all = [
     "python-can>=4.4",
     "openpyxl>=3.1",
     "python-docx>=1.1",
+    "mcp>=1.12,<2",
     "pytest>=8",
     "ruff>=0.12",
 ]
@@ -57,9 +62,13 @@ select = ["E", "F", "I", "B", "UP", "SIM"]
 
 [project.scripts]
 py-canape = "py_canape.cli:main"
+py-canape-mcp = "py_canape.mcp_server:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+py_canape = ["capability_names.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

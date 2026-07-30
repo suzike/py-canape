@@ -151,8 +151,9 @@ class CANape:
     ) -> bool:
         """打开 CANape 项目目录或指定的 ``.cna`` 文件。
 
-        ``Open2`` 的 ``non_modal`` 参数必须为 ``True`` 才不会阻塞 Python，
-        直至 CANape 被关闭。
+        Python 参数 ``non_modal=True`` 会转换为 COM ``modalmode=0``。
+        CANape COM 的第五个参数实际表示“模态模式”，传 ``1`` 会让自动化调用
+        一直阻塞到 CANape 关闭。
         """
         project_path = _as_path(project)
         if not project_path.exists():
@@ -168,7 +169,7 @@ class CANape:
                 int(visible),
                 int(timeout_ms),
                 bool(clear_device_list),
-                bool(non_modal),
+                not bool(non_modal),
                 self.APPLICATION_TYPE_CANAPE,
             )
             if project_path.is_file():
@@ -558,6 +559,20 @@ class CANape:
             raise FileNotFoundError(source)
         self.get_device(device).Download(str(source))
 
+    def transfer_device_data(
+        self,
+        device: str | int,
+        path: str | os.PathLike[str],
+        *,
+        direction: str,
+    ) -> None:
+        if direction == "upload":
+            self.upload_device_data(device, path)
+        elif direction == "download":
+            self.download_device_data(device, path)
+        else:
+            raise ValueError("direction 必须是 upload 或 download")
+
     def send_device_telegram(
         self, device: str | int, request: Sequence[int], *, response_time_ms: int = 1000
     ) -> tuple[int, ...]:
@@ -873,6 +888,280 @@ class CANape:
             rollback_on_error=False,
         )
 
+    def list_calibration_axes(
+        self, device: str | int, calibration_object: str | int
+    ) -> list[dict[str, Any]]:
+        """枚举曲线或 MAP 的轴对象；不同 CANape 版本兼容 AxisObjects/Axes。"""
+        target = self._get_calibration_object(device, calibration_object)
+        axes = getattr(target, "AxisObjects", None)
+        if axes is None:
+            axes = getattr(target, "Axes", None)
+        if axes is None:
+            return []
+        result = []
+        for index, axis in enumerate(_iter_collection(axes), start=1):
+            result.append(
+                {
+                    "index": index,
+                    "name": str(getattr(axis, "Name", f"Axis{index}")),
+                    "unit": str(getattr(axis, "Unit", "") or ""),
+                    "dimension": int(getattr(axis, "Dimension", getattr(axis, "XDim", 0))),
+                    "type": int(getattr(axis, "Type", 0)),
+                }
+            )
+        return result
+
+    def _get_calibration_axis(
+        self,
+        device: str | int,
+        calibration_object: str | int,
+        axis: str | int,
+    ) -> Any:
+        target = self._get_calibration_object(device, calibration_object)
+        axes = getattr(target, "AxisObjects", None)
+        if axes is None:
+            axes = getattr(target, "Axes", None)
+        if axes is None:
+            raise CANapeObjectNotFoundError(
+                f"标定对象 {calibration_object} 不提供轴对象"
+            )
+        return _collection_item(axes, axis)
+
+    def read_calibration_axis(
+        self,
+        device: str | int,
+        calibration_object: str | int,
+        axis: str | int,
+        *,
+        physical: bool = True,
+        force_read: bool = True,
+    ) -> Any:
+        target = self._get_calibration_axis(device, calibration_object, axis)
+        if hasattr(target, "RepresentationType"):
+            target.RepresentationType = 1 if physical else 0
+        try:
+            if force_read:
+                if hasattr(target, "ReadVariant"):
+                    return target.ReadVariant()
+                if hasattr(target, "Read"):
+                    return target.Read()
+            if hasattr(target, "ValueVariant"):
+                return target.ValueVariant
+            return target.Value
+        except Exception as exc:
+            raise CANapeCOMError(
+                f"读取标定轴 {calibration_object}/{axis} 失败：{exc}"
+            ) from exc
+
+    def write_calibration_axis(
+        self,
+        device: str | int,
+        calibration_object: str | int,
+        axis: str | int,
+        value: Any,
+        *,
+        physical: bool = True,
+        verify: bool = True,
+    ) -> Any:
+        target = self._get_calibration_axis(device, calibration_object, axis)
+        if hasattr(target, "RepresentationType"):
+            target.RepresentationType = 1 if physical else 0
+        try:
+            target.Value = value
+            target.Write()
+            if not verify:
+                return value
+            actual = self.read_calibration_axis(
+                device,
+                calibration_object,
+                axis,
+                physical=physical,
+                force_read=True,
+            )
+            if not self._values_equal(actual, value):
+                raise CANapeCOMError(
+                    f"标定轴 {calibration_object}/{axis} 回读不一致"
+                )
+            return actual
+        except CANapeCOMError:
+            raise
+        except Exception as exc:
+            raise CANapeCOMError(
+                f"写入标定轴 {calibration_object}/{axis} 失败：{exc}"
+            ) from exc
+
+    def read_calibration_parameter(
+        self,
+        device: str | int,
+        calibration_object: str | int,
+        *,
+        physical: bool = True,
+    ) -> Any:
+        """读取包含类型、范围、单位、轴和值的完整标定参数。"""
+        from .calibration import CalibrationKind, CalibrationParameter
+
+        metadata = self.get_calibration_metadata(device, calibration_object)
+        info = metadata["info"]
+        kind = (
+            CalibrationKind.MAP if info.y_dimension > 1
+            else CalibrationKind.CURVE if info.x_dimension > 1
+            else CalibrationKind.SCALAR
+        )
+        axes = self.list_calibration_axes(device, calibration_object)
+        axis_values = [
+            list(
+                self.read_calibration_axis(
+                    device, calibration_object, item["index"], physical=physical
+                )
+            )
+            for item in axes[:2]
+        ]
+        return CalibrationParameter(
+            name=info.name,
+            value=self.read_calibration_value(
+                device, calibration_object, physical=physical
+            ),
+            kind=kind,
+            unit=str(metadata.get("unit") or ""),
+            minimum=metadata.get("minimum"),
+            maximum=metadata.get("maximum"),
+            x_axis=axis_values[0] if axis_values else [],
+            y_axis=axis_values[1] if len(axis_values) > 1 else [],
+            address=metadata.get("address"),
+            conversion=str(metadata.get("conversion") or ""),
+            comment=str(metadata.get("comment") or ""),
+        )
+
+    def write_calibration_parameter(
+        self,
+        device: str | int,
+        parameter: Any,
+        *,
+        physical: bool = True,
+        verify: bool = True,
+    ) -> Any:
+        """事务式写入完整标定参数，包括曲线/MAP 轴和值。"""
+        errors = parameter.validate()
+        if errors:
+            raise ValueError("; ".join(errors))
+        axes = self.list_calibration_axes(device, parameter.name)
+        before_value = self.read_calibration_value(
+            device, parameter.name, physical=physical
+        )
+        before_axes = {
+            item["index"]: self.read_calibration_axis(
+                device, parameter.name, item["index"], physical=physical
+            )
+            for item in axes[:2]
+        }
+        try:
+            if parameter.x_axis and axes:
+                self.write_calibration_axis(
+                    device,
+                    parameter.name,
+                    axes[0]["index"],
+                    parameter.x_axis,
+                    physical=physical,
+                    verify=verify,
+                )
+            if parameter.y_axis and len(axes) > 1:
+                self.write_calibration_axis(
+                    device,
+                    parameter.name,
+                    axes[1]["index"],
+                    parameter.y_axis,
+                    physical=physical,
+                    verify=verify,
+                )
+            self.write_calibration_value(
+                device,
+                parameter.name,
+                parameter.value,
+                physical=physical,
+                verify=verify,
+            )
+            return self.read_calibration_parameter(
+                device, parameter.name, physical=physical
+            )
+        except Exception:
+            for axis, value in before_axes.items():
+                try:
+                    self.write_calibration_axis(
+                        device,
+                        parameter.name,
+                        axis,
+                        value,
+                        physical=physical,
+                        verify=True,
+                    )
+                except Exception:
+                    LOGGER.exception("回滚标定轴 %s/%s 失败", parameter.name, axis)
+            self.write_calibration_value(
+                device,
+                parameter.name,
+                before_value,
+                physical=physical,
+                verify=True,
+            )
+            raise
+
+    def export_calibration_dataset(
+        self,
+        device: str | int,
+        calibration_objects: Sequence[str],
+        output_file: str | os.PathLike[str],
+        *,
+        identity: dict[str, str] | None = None,
+        physical: bool = True,
+    ) -> Any:
+        from .calibration import CalibrationDataset
+
+        dataset = CalibrationDataset(
+            parameters={
+                name: self.read_calibration_parameter(
+                    device, name, physical=physical
+                )
+                for name in calibration_objects
+            },
+            identity=dict(identity or {}),
+            source=f"CANape:{device}",
+        )
+        dataset.save(output_file)
+        return dataset
+
+    def import_calibration_dataset(
+        self,
+        device: str | int,
+        input_file: str | os.PathLike[str],
+        *,
+        physical: bool = True,
+        verify: bool = True,
+    ) -> dict[str, Any]:
+        from .calibration import CalibrationDataset
+
+        dataset = CalibrationDataset.load(input_file)
+        dataset.require_valid()
+        baseline = {
+            name: self.read_calibration_parameter(device, name, physical=physical)
+            for name in dataset.parameters
+        }
+        written = {}
+        try:
+            for name, parameter in dataset.parameters.items():
+                written[name] = self.write_calibration_parameter(
+                    device, parameter, physical=physical, verify=verify
+                )
+            return written
+        except Exception:
+            for parameter in reversed(list(baseline.values())):
+                try:
+                    self.write_calibration_parameter(
+                        device, parameter, physical=physical, verify=True
+                    )
+                except Exception:
+                    LOGGER.exception("回滚数据集标定量 %s 失败", parameter.name)
+            raise
+
     # 记录器
     def list_recorders(self) -> list[RecorderInfo]:
         result: list[RecorderInfo] = []
@@ -937,6 +1226,11 @@ class CANape:
         _collection_item(self._require_application().NetWorks, network).Activate(
             bool(active)
         )
+
+    def configure_network(self, network: str | int, *, active: bool = True) -> dict[str, Any]:
+        self.activate_network(network, active)
+        target = _collection_item(self._require_application().NetWorks, network)
+        return {"name": str(target.Name), "active": bool(target.IsActivate)}
 
     def configure_api_logging(
         self,
@@ -1027,6 +1321,13 @@ class CANape:
     def get_tester_present_status(self, device: str | int) -> Any:
         return self.get_device(device).Diagnostic.TesterPresentStatus
 
+    def set_tester_present(self, device: str | int, *, enabled: bool) -> Any:
+        if enabled:
+            self.start_tester_present(device)
+        else:
+            self.stop_tester_present(device)
+        return self.get_tester_present_status(device)
+
     def execute_diagnostic_job(
         self, device: str | int, job: Any, *, command_line: Any = ""
     ) -> Any:
@@ -1065,6 +1366,25 @@ class CANape:
             has_return_value=bool(state.HasReturnValue),
             return_value=state.ReturnValue if bool(state.HasReturnValue) else None,
         )
+
+    def control_flash(
+        self,
+        device: str | int,
+        *,
+        action: str,
+        job: Any = None,
+        session: Any = None,
+        config_file: str | os.PathLike[str] | None = None,
+    ) -> FlashStateInfo:
+        if action == "start":
+            if job is None or session is None:
+                raise ValueError("启动刷写必须提供 job 和 session")
+            self.start_flash(device, job, session, config_file=config_file)
+        elif action == "stop":
+            self.stop_flash(device)
+        else:
+            raise ValueError("action 必须是 start 或 stop")
+        return self.get_flash_state(device)
 
     @staticmethod
     def _diagnostic_responses(responses: Any) -> list[DiagnosticResponse]:

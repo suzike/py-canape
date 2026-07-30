@@ -1,7 +1,29 @@
 """Vector CANape 的 Python COM 控制接口。"""
 
+from .ai_tools import (
+    AIActionPlan,
+    AIToolRegistry,
+    AIToolSpec,
+    ApprovalStore,
+    CANapeAIToolkit,
+    EngineeringCommandPlanner,
+    ToolRisk,
+)
 from .analysis import Finding, SignalAnalyzer
 from .assets import AssetManager, AssetRecord, PreflightResult
+from .calibration import (
+    CalibrationChange,
+    CalibrationDataset,
+    CalibrationExperiment,
+    CalibrationKind,
+    CalibrationMath,
+    CalibrationOptimizer,
+    CalibrationParameter,
+    CalibrationPlan,
+    CalibrationRepository,
+    CalibrationSession,
+    SweepParameter,
+)
 from .canape import CANape
 from .capabilities import Capability, CapabilityRegistry
 from .errors import (
@@ -39,6 +61,24 @@ from .workflow import StepResult, WorkflowEngine, WorkflowResult
 
 __all__ = [
     "CANape",
+    "ToolRisk",
+    "AIToolSpec",
+    "AIActionPlan",
+    "ApprovalStore",
+    "AIToolRegistry",
+    "EngineeringCommandPlanner",
+    "CANapeAIToolkit",
+    "CalibrationKind",
+    "CalibrationParameter",
+    "CalibrationDataset",
+    "CalibrationRepository",
+    "CalibrationChange",
+    "CalibrationPlan",
+    "CalibrationSession",
+    "CalibrationExperiment",
+    "CalibrationOptimizer",
+    "CalibrationMath",
+    "SweepParameter",
     "AssetManager",
     "AssetRecord",
     "PreflightResult",
@@ -82,4 +122,4 @@ __all__ = [
     "TaskInfo",
 ]
 
-__version__ = "1.0.0"
+__version__ = "2.0.0"

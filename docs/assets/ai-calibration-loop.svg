@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="620" viewBox="0 0 1440 620">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#071426"/>
+      <stop offset="1" stop-color="#102f44"/>
+    </linearGradient>
+    <filter id="shadow"><feDropShadow dx="0" dy="8" stdDeviation="10" flood-opacity=".28"/></filter>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M0,0 L12,6 L0,12 Z" fill="#45d5c2"/>
+    </marker>
+  </defs>
+  <rect width="1440" height="620" rx="30" fill="url(#bg)"/>
+  <text x="70" y="74" fill="#e9fbff" font-size="34" font-family="Segoe UI, sans-serif" font-weight="700">自然语言驱动的 ECU 标定闭环</text>
+  <text x="70" y="112" fill="#9fc1ce" font-size="19" font-family="Segoe UI, sans-serif">计划、审批、执行、回读、回滚与证据全程分离</text>
+  <g filter="url(#shadow)" font-family="Segoe UI, sans-serif">
+    <g transform="translate(70 180)">
+      <rect width="240" height="210" rx="22" fill="#153e58" stroke="#54d9cb" stroke-width="2"/>
+      <circle cx="54" cy="55" r="26" fill="#45d5c2"/>
+      <text x="95" y="62" fill="#fff" font-size="25" font-weight="700">AI Agent</text>
+      <text x="30" y="115" fill="#c7e7ee" font-size="18">Codex / Claude Code</text>
+      <text x="30" y="150" fill="#c7e7ee" font-size="18">自然语言意图</text>
+      <text x="30" y="185" fill="#c7e7ee" font-size="18">不持有审批权</text>
+    </g>
+    <g transform="translate(410 150)">
+      <rect width="280" height="270" rx="22" fill="#17324a" stroke="#4ea8de" stroke-width="2"/>
+      <text x="30" y="56" fill="#fff" font-size="25" font-weight="700">py-canape MCP</text>
+      <text x="30" y="105" fill="#b9d9e7" font-size="18">Schema 参数校验</text>
+      <text x="30" y="140" fill="#b9d9e7" font-size="18">风险分级</text>
+      <text x="30" y="175" fill="#b9d9e7" font-size="18">Action Plan + SHA-256</text>
+      <text x="30" y="210" fill="#b9d9e7" font-size="18">单次原子认领</text>
+      <text x="30" y="245" fill="#b9d9e7" font-size="18">结构化结果</text>
+    </g>
+    <g transform="translate(770 180)">
+      <rect width="240" height="210" rx="22" fill="#443352" stroke="#db9df2" stroke-width="2"/>
+      <text x="30" y="58" fill="#fff" font-size="25" font-weight="700">工程师审批</text>
+      <text x="30" y="110" fill="#ead5f2" font-size="18">核对 ECU / 对象</text>
+      <text x="30" y="145" fill="#ead5f2" font-size="18">核对范围 / 原因</text>
+      <text x="30" y="180" fill="#ead5f2" font-size="18">审批在 MCP 之外</text>
+    </g>
+    <g transform="translate(1110 150)">
+      <rect width="260" height="270" rx="22" fill="#234532" stroke="#70dc8c" stroke-width="2"/>
+      <text x="30" y="56" fill="#fff" font-size="25" font-weight="700">CANape / ECU</text>
+      <text x="30" y="105" fill="#cef0d6" font-size="18">测量与记录</text>
+      <text x="30" y="140" fill="#cef0d6" font-size="18">标量 / 曲线 / MAP</text>
+      <text x="30" y="175" fill="#cef0d6" font-size="18">诊断 / 网络 / 刷写</text>
+      <text x="30" y="210" fill="#cef0d6" font-size="18">回读验证</text>
+      <text x="30" y="245" fill="#cef0d6" font-size="18">失败事务回滚</text>
+    </g>
+  </g>
+  <g fill="none" stroke="#45d5c2" stroke-width="5" marker-end="url(#arrow)">
+    <path d="M310 285 H390"/>
+    <path d="M690 235 C725 210 735 210 760 225"/>
+    <path d="M1010 285 H1090"/>
+    <path d="M1110 455 C880 560 540 555 295 420"/>
+  </g>
+  <text x="355" y="265" fill="#9fe9df" font-size="15" font-family="Segoe UI, sans-serif">计划</text>
+  <text x="710" y="196" fill="#d9b5e8" font-size="15" font-family="Segoe UI, sans-serif">外部审批</text>
+  <text x="1032" y="265" fill="#9fe9df" font-size="15" font-family="Segoe UI, sans-serif">执行</text>
+  <text x="645" y="555" fill="#9fe9df" font-size="17" font-family="Segoe UI, sans-serif">结果、证据、审计与回滚状态</text>
+</svg>

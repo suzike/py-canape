@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import os
@@ -120,7 +121,9 @@ class AssetManager:
         return sorted(records, key=lambda item: item.path.casefold())
 
     @staticmethod
-    def environment_inventory() -> dict[str, Any]:
+    def environment_inventory(
+        providers: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         commands = {}
         for name, command in {
             "python": [sys.executable, "--version"],
@@ -130,7 +133,7 @@ class AssetManager:
                 command, capture_output=True, text=True, check=False
             )
             commands[name] = (result.stdout or result.stderr).strip()
-        return {
+        inventory = {
             "timestamp_utc": datetime.now(timezone.utc).isoformat(),
             "hostname": socket.gethostname(),
             "platform": platform.platform(),
@@ -138,6 +141,75 @@ class AssetManager:
             "python_executable": sys.executable,
             "commands": commands,
         }
+        for name, provider in (providers or {}).items():
+            try:
+                inventory[name] = provider() if callable(provider) else provider
+            except Exception as exc:
+                inventory[name] = {"available": False, "error": str(exc)}
+        return inventory
+
+    @staticmethod
+    def command_versions(commands: dict[str, list[str]]) -> dict[str, dict[str, Any]]:
+        versions = {}
+        for name, command in commands.items():
+            executable = shutil.which(command[0])
+            if executable is None:
+                versions[name] = {"available": False, "version": None}
+                continue
+            result = subprocess.run(
+                [executable, *command[1:]],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=10,
+            )
+            versions[name] = {
+                "available": result.returncode == 0,
+                "version": (result.stdout or result.stderr).strip(),
+                "executable": executable,
+            }
+        return versions
+
+    @staticmethod
+    def check_ports(host: str, ports: Iterable[int], *, timeout: float = 0.2) -> dict[int, bool]:
+        results = {}
+        for port in ports:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as connection:
+                connection.settimeout(timeout)
+                results[int(port)] = connection.connect_ex((host, int(port))) == 0
+        return results
+
+    @staticmethod
+    def process_conflicts(process_names: Iterable[str]) -> dict[str, list[int]]:
+        wanted = {name.casefold().removesuffix(".exe") for name in process_names}
+        conflicts = {name: [] for name in wanted}
+        if not wanted:
+            return conflicts
+        command = (
+            ["tasklist", "/FO", "CSV", "/NH"]
+            if os.name == "nt"
+            else ["ps", "-eo", "pid=,comm="]
+        )
+        result = subprocess.run(command, capture_output=True, text=True, check=False)
+        if os.name == "nt":
+            import csv
+
+            for row in csv.reader(result.stdout.splitlines()):
+                if len(row) < 2:
+                    continue
+                name = Path(row[0]).stem.casefold()
+                if name in conflicts:
+                    with contextlib.suppress(ValueError):
+                        conflicts[name].append(int(row[1]))
+        else:
+            for line in result.stdout.splitlines():
+                parts = line.strip().split(maxsplit=1)
+                if len(parts) == 2:
+                    name = Path(parts[1]).stem.casefold()
+                    if name in conflicts:
+                        with contextlib.suppress(ValueError):
+                            conflicts[name].append(int(parts[0]))
+        return conflicts
 
     def preflight(
         self,
@@ -146,6 +218,10 @@ class AssetManager:
         output_directory: str | os.PathLike[str] | None = None,
         minimum_free_bytes: int = 0,
         required_suffixes: Iterable[str] = (),
+        required_commands: Iterable[str] = (),
+        required_environment: Iterable[str] = (),
+        unavailable_ports: Iterable[int] = (),
+        conflicting_processes: Iterable[str] = (),
     ) -> PreflightResult:
         result = PreflightResult(passed=True)
         resolved = [Path(value).expanduser().resolve() for value in required_paths]
@@ -180,6 +256,28 @@ class AssetManager:
                 result.errors.append(
                     f"磁盘空间不足：{free} < {minimum_free_bytes}"
                 )
+        for command in required_commands:
+            available = shutil.which(command) is not None
+            result.checks[f"command:{command}"] = available
+            if not available:
+                result.errors.append(f"缺少必需命令：{command}")
+        for name in required_environment:
+            available = bool(os.environ.get(name))
+            result.checks[f"environment:{name}"] = available
+            if not available:
+                result.errors.append(f"缺少必需环境变量：{name}")
+        ports = self.check_ports("127.0.0.1", unavailable_ports)
+        result.details["ports"] = ports
+        for port, occupied in ports.items():
+            result.checks[f"port_available:{port}"] = not occupied
+            if occupied:
+                result.errors.append(f"端口已占用：{port}")
+        conflicts = self.process_conflicts(conflicting_processes)
+        result.details["process_conflicts"] = conflicts
+        for name, pids in conflicts.items():
+            result.checks[f"process_absent:{name}"] = not pids
+            if pids:
+                result.errors.append(f"冲突进程正在运行：{name} {pids}")
         result.passed = not result.errors
         return result
 

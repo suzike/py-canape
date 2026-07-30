@@ -11,6 +11,7 @@ from dataclasses import asdict
 from pathlib import Path
 
 from . import __version__
+from .ai_tools import ApprovalStore, CANapeAIToolkit
 from .assets import AssetManager
 from .canape import CANape
 from .capabilities import CapabilityRegistry
@@ -72,8 +73,7 @@ def _project_info(project: str) -> int:
 
 
 def _capabilities() -> int:
-    matrix = Path(__file__).resolve().parents[2] / "CAPABILITIES.md"
-    registry = CapabilityRegistry.from_markdown(matrix)
+    registry = CapabilityRegistry.default()
     validation = registry.validate()
     print(
         json.dumps(
@@ -155,7 +155,62 @@ def _asset_manifest(paths: list[str], output: str) -> int:
     return 0
 
 
+def _ai_toolkit(approval_file: str | None = None) -> CANapeAIToolkit:
+    return CANapeAIToolkit(CANape(), approvals=ApprovalStore(approval_file))
+
+
+def _ai_tools(approval_file: str | None) -> int:
+    print(
+        json.dumps(
+            _ai_toolkit(approval_file).registry.manifest(),
+            ensure_ascii=False,
+            indent=2,
+        )
+    )
+    return 0
+
+
+def _ai_plan(
+    request: str,
+    context: str,
+    approval_file: str | None,
+) -> int:
+    result = _ai_toolkit(approval_file).planner.plan(
+        request, context=json.loads(context)
+    )
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0 if result["status"] == "ready" else 1
+
+
+def _ai_approve(plan_id: str, approver: str, approval_file: str | None) -> int:
+    plan = ApprovalStore(approval_file).approve(plan_id, approver)
+    print(json.dumps(asdict(plan), ensure_ascii=False, indent=2))
+    return 0
+
+
+def _ai_call(
+    tool: str,
+    arguments: str,
+    *,
+    execute: bool,
+    action_plan_id: str,
+    approval_file: str | None,
+) -> int:
+    result = _ai_toolkit(approval_file).registry.invoke(
+        tool,
+        json.loads(arguments),
+        dry_run=not execute,
+        action_plan_id=action_plan_id,
+    )
+    print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
+    if hasattr(sys.stderr, "reconfigure"):
+        sys.stderr.reconfigure(encoding="utf-8")
     parser = argparse.ArgumentParser(
         prog="py-canape", description="Vector CANape COM 控制与诊断工具"
     )
@@ -179,6 +234,22 @@ def main(argv: list[str] | None = None) -> int:
     manifest = subparsers.add_parser("asset-manifest", help="生成工程资产哈希清单")
     manifest.add_argument("paths", nargs="+", type=str)
     manifest.add_argument("--output", required=True, type=str)
+    ai_tools = subparsers.add_parser("ai-tools", help="列出 AI/MCP 工具和 JSON Schema")
+    ai_tools.add_argument("--approval-file", type=str)
+    ai_plan = subparsers.add_parser("ai-plan", help="把自然语言请求转换为工程工具计划")
+    ai_plan.add_argument("request", type=str)
+    ai_plan.add_argument("--context", default="{}", type=str)
+    ai_plan.add_argument("--approval-file", type=str)
+    ai_approve = subparsers.add_parser("ai-approve", help="由外部用户审批 AI Action Plan")
+    ai_approve.add_argument("plan_id", type=str)
+    ai_approve.add_argument("--approver", required=True, type=str)
+    ai_approve.add_argument("--approval-file", type=str)
+    ai_call = subparsers.add_parser("ai-call", help="Dry-run 或执行结构化 AI 工具")
+    ai_call.add_argument("tool", type=str)
+    ai_call.add_argument("--arguments", default="{}", type=str)
+    ai_call.add_argument("--execute", action="store_true")
+    ai_call.add_argument("--action-plan-id", default="", type=str)
+    ai_call.add_argument("--approval-file", type=str)
     args = parser.parse_args(argv)
 
     if args.command == "check":
@@ -200,6 +271,20 @@ def main(argv: list[str] | None = None) -> int:
         )
     if args.command == "asset-manifest":
         return _asset_manifest(args.paths, args.output)
+    if args.command == "ai-tools":
+        return _ai_tools(args.approval_file)
+    if args.command == "ai-plan":
+        return _ai_plan(args.request, args.context, args.approval_file)
+    if args.command == "ai-approve":
+        return _ai_approve(args.plan_id, args.approver, args.approval_file)
+    if args.command == "ai-call":
+        return _ai_call(
+            args.tool,
+            args.arguments,
+            execute=args.execute,
+            action_plan_id=args.action_plan_id,
+            approval_file=args.approval_file,
+        )
     parser.error(f"未知命令：{args.command}")
     return 2
 

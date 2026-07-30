@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
+from importlib.resources import files
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +16,8 @@ class Capability:
     name: str
     implementation: str
     verification: str
+    contract_id: str
+    acceptance: str
 
 
 IMPLEMENTATIONS: dict[int, str] = {
@@ -28,7 +31,7 @@ IMPLEMENTATIONS: dict[int, str] = {
     15: "CANape.set_device_online", 16: "CANape.set_device_offline",
     17: "CANape.list_devices", 18: "CANape.read_memory",
     19: "CANape.read_memory", 20: "CANape.write_memory",
-    21: "CANape.upload_device_data", 22: "CANape.reconnect_device",
+    21: "CANape.transfer_device_data", 22: "CANape.reconnect_device",
     23: "CANape.start_measurement", 24: "CANape.stop_measurement",
     25: "CANape.get_measurement_state", 26: "CANape.set_measurement_output_file",
     27: "CANape.list_tasks", 28: "CANape.list_measurement_channels",
@@ -50,38 +53,38 @@ IMPLEMENTATIONS: dict[int, str] = {
     59: "EngineeringPlatform.trigger_window", 60: "SignalAnalyzer.quality",
     61: "CANape.send_diagnostic_request", 62: "CANape.send_raw_diagnostic_request",
     63: "CANape.send_diagnostic_request", 64: "CANape.send_diagnostic_request",
-    65: "CANape.start_tester_present", 66: "CANape.execute_diagnostic_job",
-    67: "CANape.list_security_profiles", 68: "CANape.start_flash",
+    65: "CANape.set_tester_present", 66: "CANape.execute_diagnostic_job",
+    67: "CANape.list_security_profiles", 68: "CANape.control_flash",
     69: "CANape.get_flash_state", 70: "SafetyPolicy.authorize",
-    71: "CANape.list_networks", 72: "OfflineData.blf_metadata",
+    71: "CANape.configure_network", 72: "OfflineData.blf_metadata",
     73: "OfflineData.decode_blf", 74: "OfflineData.check_channel_mapping",
-    75: "OfflineData.mdf_metadata", 76: "OfflineData.resample",
+    75: "OfflineData.mdf_metadata", 76: "OfflineData.extract_mdf",
     77: "OfflineData.parse_a2l", 78: "OfflineData.compare_a2l_symbols",
     79: "SignalDictionary.merge", 80: "OfflineData.align",
     81: "SignalAnalyzer.quality", 82: "SignalAnalyzer.conversion_chain",
     83: "SignalAnalyzer.causality", 84: "SignalAnalyzer.state_transitions",
-    85: "SignalAnalyzer.hysteresis", 86: "SignalAnalyzer.control_metrics",
+    85: "SignalAnalyzer.strategy_validation", 86: "SignalAnalyzer.control_metrics",
     87: "SignalAnalyzer.timing", 88: "SignalAnalyzer.independence",
-    89: "SignalAnalyzer.compare", 90: "SignalAnalyzer.anomaly_candidates",
+    89: "SignalAnalyzer.compare", 90: "SignalAnalyzer.cluster_anomalies",
     91: "CANape.run_script", 92: "AuditTrail.append",
     93: "WorkflowEngine.execute", 94: "WorkflowEngine.execute",
     95: "Reporter.generate", 96: "EngineeringPlatform.archive_project",
     97: "AssetManager.environment_inventory", 98: "AssetManager.create_manifest",
     99: "AssetManager.preflight", 100: "AssetManager.snapshot",
     101: "AssetManager.validate_topology", 102: "EngineeringPlatform.preflight_catalog",
-    103: "SignalDictionary.validate", 104: "OfflineData.align",
+    103: "SignalDictionary.validate", 104: "OfflineData.time_source_report",
     105: "AssetManager.preflight", 106: "EngineeringPlatform.reproducibility_report",
     107: "WorkflowEngine.load", 108: "WorkflowEngine.merge_variables",
     109: "WorkflowEngine.execute", 110: "WorkflowEngine.execute",
-    111: "WorkflowEngine.execute", 112: "WorkflowEngine.execute",
+    111: "WorkflowEngine.multi_ecu_definition", 112: "WorkflowEngine.execute",
     113: "WorkflowEngine.execute", 114: "WorkflowEngine.execute",
-    115: "WorkflowEngine.batch", 116: "WorkflowEngine.execute",
-    117: "SignalDictionary.merge", 118: "EngineeringPlatform.derive_signal",
+    115: "WorkflowEngine.batch", 116: "WorkflowEngine.ci_summary",
+    117: "SignalDictionary.from_sources", 118: "EngineeringPlatform.derive_signal",
     119: "SignalAnalyzer.quality", 120: "SignalAnalyzer.state_transitions",
-    121: "SignalAnalyzer.causality", 122: "SignalAnalyzer.hysteresis",
+    121: "SignalAnalyzer.causality", 122: "SignalAnalyzer.strategy_validation",
     123: "SignalAnalyzer.control_metrics", 124: "SignalAnalyzer.independence",
     125: "SignalAnalyzer.energy_balance", 126: "SignalAnalyzer.compare",
-    127: "SignalAnalyzer.anomaly_candidates", 128: "Reporter.create_evidence_bundle",
+    127: "SignalAnalyzer.cluster_anomalies", 128: "Reporter.create_evidence_bundle",
     129: "SafetyPolicy.authorize", 130: "SafetyPolicy.authorize",
     131: "SafetyPolicy.authorize", 132: "EnvironmentSecretProvider.get_secret",
     133: "AuditTrail.verify", 134: "EngineeringPlatform.bind_identity",
@@ -115,6 +118,33 @@ class CapabilityRegistry:
     def __init__(self, capabilities: list[Capability]) -> None:
         self.capabilities = {item.id: item for item in capabilities}
 
+    @staticmethod
+    def _capability(number: int, name: str) -> Capability:
+        return Capability(
+            id=number,
+            name=name,
+            implementation=IMPLEMENTATIONS[number],
+            verification=VERIFICATION[number],
+            contract_id=f"PYC-{number:03d}",
+            acceptance=(
+                f"调用 {IMPLEMENTATIONS[number]} 完成“{name}”，"
+                f"并按 {VERIFICATION[number]} 等级留存结果或现场证据"
+            ),
+        )
+
+    @classmethod
+    def default(cls) -> CapabilityRegistry:
+        import json
+
+        resource = files("py_canape").joinpath("capability_names.json")
+        names = json.loads(resource.read_text(encoding="utf-8"))
+        return cls(
+            [
+                cls._capability(number, names[str(number)])
+                for number in range(1, 141)
+            ]
+        )
+
     @classmethod
     def from_markdown(cls, path: str | Path) -> CapabilityRegistry:
         capabilities = []
@@ -125,14 +155,7 @@ class CapabilityRegistry:
             number = int(match.group(1))
             if number not in IMPLEMENTATIONS:
                 continue
-            capabilities.append(
-                Capability(
-                    id=number,
-                    name=match.group(2).strip(),
-                    implementation=IMPLEMENTATIONS[number],
-                    verification=VERIFICATION[number],
-                )
-            )
+            capabilities.append(cls._capability(number, match.group(2).strip()))
         return cls(capabilities)
 
     def validate(self) -> dict[str, Any]:
@@ -141,12 +164,27 @@ class CapabilityRegistry:
         missing_implementations = sorted(expected - set(IMPLEMENTATIONS))
         missing_capabilities = sorted(expected - actual)
         extra = sorted(actual - expected)
+        unresolved = {}
+        contract_ids = [item.contract_id for item in self.capabilities.values()]
+        for capability in self.capabilities.values():
+            try:
+                self.resolve(capability.implementation)
+            except (AttributeError, KeyError, TypeError) as exc:
+                unresolved[capability.id] = str(exc)
         return {
-            "passed": not missing_implementations and not missing_capabilities and not extra,
+            "passed": (
+                not missing_implementations
+                and not missing_capabilities
+                and not extra
+                and not unresolved
+                and len(contract_ids) == len(set(contract_ids))
+            ),
             "count": len(actual),
             "missing_implementations": missing_implementations,
             "missing_capabilities": missing_capabilities,
             "extra": extra,
+            "unresolved": unresolved,
+            "unique_contracts": len(set(contract_ids)),
         }
 
     def list(self) -> list[Capability]:

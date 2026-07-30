@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib
 import json
 import re
+import xml.etree.ElementTree as ET
 from collections.abc import Iterable, Mapping, Sequence
 from contextlib import suppress
 from dataclasses import asdict, dataclass, field
@@ -90,6 +91,28 @@ class SignalDictionary:
             encoding="utf-8",
         )
 
+    @classmethod
+    def from_sources(
+        cls,
+        *,
+        a2l: Iterable[str | Path] = (),
+        dbc: Iterable[str | Path] = (),
+        odx: Iterable[str | Path] = (),
+        code_definitions: Iterable[SignalDefinition] = (),
+    ) -> SignalDictionary:
+        dictionary = cls()
+        definitions = list(code_definitions)
+        for path in a2l:
+            definitions.extend(OfflineData.parse_a2l(path))
+        for path in dbc:
+            definitions.extend(OfflineData.parse_dbc(path))
+        for path in odx:
+            definitions.extend(OfflineData.parse_odx(path))
+        conflicts = dictionary.merge(definitions)
+        if conflicts:
+            raise ValueError(f"跨源信号冲突：{sorted(conflicts)}")
+        return dictionary
+
 
 class OfflineData:
     """统一表格式数据接口；时间列默认命名为 ``time``。"""
@@ -168,6 +191,22 @@ class OfflineData:
                 "channels": channels,
                 "start_time": str(mdf.header.start_time),
             }
+
+    def extract_mdf(
+        self,
+        source: str | Path,
+        output: str | Path,
+        *,
+        channels: Sequence[str] | None = None,
+        raster: float | None = None,
+    ) -> Path:
+        """Extract selected MDF channels and persist them as CSV/Parquet/Excel/JSON."""
+        frame = self.read_mdf(source, channels=channels, raster=raster)
+        frame = frame.reset_index()
+        first = frame.columns[0]
+        if first != "time":
+            frame = frame.rename(columns={first: "time"})
+        return self.write_table(frame, output)
 
     def read_blf(self, path: str | Path, *, channel: int | None = None) -> Any:
         try:
@@ -288,6 +327,62 @@ class OfflineData:
         return definitions
 
     @staticmethod
+    def parse_odx(path: str | Path) -> list[SignalDefinition]:
+        """Parse names and identifiers from ODX/PDX XML into the unified dictionary."""
+        source = Path(path).expanduser().resolve()
+        if source.suffix.casefold() == ".pdx":
+            import zipfile
+
+            definitions = []
+            with zipfile.ZipFile(source) as archive:
+                for member in archive.namelist():
+                    if member.casefold().endswith((".odx", ".xml")):
+                        definitions.extend(
+                            OfflineData._parse_odx_tree(
+                                ET.fromstring(archive.read(member)), f"{source}!{member}"
+                            )
+                        )
+            return definitions
+        return OfflineData._parse_odx_tree(ET.parse(source).getroot(), str(source))
+
+    @staticmethod
+    def _parse_odx_tree(root: Any, source: str) -> list[SignalDefinition]:
+        definitions = []
+        seen = set()
+        supported = {
+            "DIAG-SERVICE": "service",
+            "DATA-OBJECT-PROP": "data_object",
+            "DYNAMIC-LENGTH-FIELD": "field",
+            "STATIC-FIELD": "field",
+            "STRUCTURE": "structure",
+        }
+        for element in root.iter():
+            tag = element.tag.rsplit("}", 1)[-1]
+            if tag not in supported:
+                continue
+            short_name = next(
+                (
+                    child.text
+                    for child in element
+                    if child.tag.rsplit("}", 1)[-1] == "SHORT-NAME" and child.text
+                ),
+                None,
+            )
+            if not short_name or short_name.casefold() in seen:
+                continue
+            seen.add(short_name.casefold())
+            identifier = element.attrib.get("ID", "")
+            definitions.append(
+                SignalDefinition(
+                    name=short_name,
+                    source=source,
+                    data_type=supported[tag],
+                    metadata={"odx_id": identifier, "odx_tag": tag},
+                )
+            )
+        return definitions
+
+    @staticmethod
     def compare_a2l_symbols(
         definitions: Sequence[SignalDefinition],
         software_symbols: Iterable[str],
@@ -344,6 +439,38 @@ class OfflineData:
             direction="nearest",
             suffixes=suffixes,
         )
+
+    @staticmethod
+    def time_source_report(sources: Mapping[str, Mapping[str, Any]]) -> dict[str, Any]:
+        """Validate clock domain, synchronization mechanism, offset and drift."""
+        issues = []
+        normalized = {}
+        for name, descriptor in sources.items():
+            domain = descriptor.get("clock_domain")
+            method = descriptor.get("sync_method")
+            offset = descriptor.get("offset_seconds")
+            drift = descriptor.get("drift_ppm")
+            normalized[name] = {
+                "clock_domain": domain,
+                "sync_method": method,
+                "offset_seconds": offset,
+                "drift_ppm": drift,
+            }
+            if not domain:
+                issues.append(f"{name}: 缺少 clock_domain")
+            if not method:
+                issues.append(f"{name}: 缺少 sync_method")
+            if offset is None:
+                issues.append(f"{name}: 缺少 offset_seconds")
+            if drift is None:
+                issues.append(f"{name}: 缺少 drift_ppm")
+        domains = {item["clock_domain"] for item in normalized.values() if item["clock_domain"]}
+        synchronized = len(domains) <= 1 or all(
+            item["sync_method"] not in {None, "none"} for item in normalized.values()
+        )
+        if not synchronized:
+            issues.append("跨时钟域数据未声明同步方法")
+        return {"passed": not issues, "sources": normalized, "issues": issues}
 
     @staticmethod
     def check_channel_mapping(

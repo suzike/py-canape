@@ -9,12 +9,13 @@
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![CANape](https://img.shields.io/badge/CANape-17.x-0EA5E9)](#canape-17-兼容性)
 [![Capabilities](https://img.shields.io/badge/Capabilities-140%2F140-14B8A6)](./CAPABILITIES.md)
-[![Tests](https://img.shields.io/badge/Tests-31%20passed-22C55E)](#质量与验证)
+[![Tests](https://img.shields.io/badge/Tests-58%20passed-22C55E)](#质量与验证)
 [![License](https://img.shields.io/badge/License-MIT-F59E0B)](./LICENSE)
 
-**在线控制 · 离线解析 · 通用分析 · 安全门禁 · 工程闭环**
+**ECU 标定 · AI Agent · 在线测量 · 离线分析 · 安全门禁 · 工程闭环**
 
-[快速开始](#快速开始) · [能力地图](#140-项工程能力) ·
+[快速开始](#快速开始) · [ECU-标定](#ecu-标定是第一主线) ·
+[AI 联动](#codex--claude-code-自然语言驱动) · [能力地图](#140-项工程能力) ·
 [架构设计](#平台架构) · [安全边界](#安全边界) ·
 [完整能力表](./CAPABILITIES.md)
 
@@ -28,7 +29,8 @@
 CANape 项目、ECU 在线状态、MDF/BLF 数据、A2L/DBC 数据库、标定版本、诊断请求、
 安全前置条件、分析结论和问题单证据。
 
-`py-canape` 将这些工作统一到一个可编排、可审计、可扩展的 Python 平台中：
+`py-canape` 首先是一套面向真实 ECU 的标定工具包，同时将问题排查、测量、诊断、
+刷写和数据分析统一到一个可编排、可审计、可扩展的 Python 平台中：
 
 | 工程痛点 | py-canape 提供的能力 |
 |---|---|
@@ -38,8 +40,72 @@ CANape 项目、ECU 在线状态、MDF/BLF 数据、A2L/DBC 数据库、标定�
 | 排查依赖个人经验 | 信号质量、状态、因果、时序、控制性能和 A/B 分析 |
 | 证据整理耗时 | 自动生成 Word、Excel、PDF、HTML 和完整证据包 |
 | 专业扩展成本高 | 动力、底盘、车身、三电、热管理、ADAS 领域插件 |
+| AI 只能给建议 | 本地 MCP、结构化 Schema、外部审批和自然语言工程计划 |
 
 <img src="./docs/assets/engineering-loop.svg" alt="整车问题排查工程闭环" width="100%">
+
+## ECU 标定是第一主线
+
+`py-canape` 不把标定简化成单个 `SetValue`。它覆盖从标定对象识别到版本基线、实验和
+安全提交的完整工程链：
+
+| 标定阶段 | 已实现能力 |
+|---|---|
+| 对象建模 | 标量、枚举、ASCII、曲线、轴、二维 MAP、单位、范围、地址、转换规则 |
+| 在线读写 | 值和轴联合读写、维度校验、边界拦截、回读验证、失败回滚 |
+| 数据集 | JSON/CSV 导入导出、SHA-256、差异、补丁、三方合并 |
+| 版本管理 | 版本仓库、车辆/ECU/软件/任务绑定、标签、注释、恢复 |
+| 变更控制 | 变更计划、基线值锁定、审批、预览、事务提交和审计字段 |
+| 标定实验 | 全因子、OFAT、Latin Hypercube、自动采集目标、每轮恢复基线 |
+| 优化 | 多指标加权评分和带边界的坐标搜索 |
+| AI 驱动 | 自然语言规划、MCP 工具、参数摘要绑定、单次外部审批 |
+
+```python
+from py_canape import CalibrationChange, CalibrationDataset, CalibrationPlan
+
+plan = CalibrationPlan(
+    name="torque-response-v3",
+    changes=[
+        CalibrationChange(
+            name="TorqueLimit",
+            value=320.0,
+            expected_before=280.0,
+            enforce_expected=True,
+            reason="台架满负荷响应优化",
+        )
+    ],
+)
+baseline = CalibrationDataset(
+    parameters={
+        "TorqueLimit": canape.read_calibration_parameter("VCU", "TorqueLimit")
+    }
+)
+print(plan.preview(baseline))
+plan.approve("calibration-engineer")
+result = plan.apply(canape, "VCU")
+```
+
+曲线和 MAP 使用 `read_calibration_parameter` / `write_calibration_parameter`，轴和值作为
+一个事务处理。
+
+## Codex / Claude Code 自然语言驱动
+
+<img src="./docs/assets/ai-calibration-loop.svg" alt="AI 驱动 ECU 标定闭环" width="100%">
+
+安装 AI 能力后启动本地 MCP Server：
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -e ".[ai]"
+.\.venv\Scripts\py-canape-mcp.exe
+```
+
+AI 先把“读取 VCU 的扭矩限制”“修改 TorqueCurve”“启动测量”等自然语言转换为带
+JSON Schema 的工程工具。只读动作可直接执行；任何非只读动作都先生成 Action Plan，
+必须由工程师在 MCP 之外批准。工具与完整参数的摘要绑定，参数修改、并发重复执行和
+计划复用均会被拒绝。
+
+Codex、Claude Code 配置、审批协议和示例见
+[AI Agent 联动指南](./docs/AI_INTEGRATION.md)。
 
 ## 140 项工程能力
 
@@ -47,7 +113,7 @@ CANape 项目、ECU 在线状态、MDF/BLF 数据、A2L/DBC 数据库、标定�
 
 <img src="./docs/assets/capability-overview.svg" alt="140 项工程能力验证分布" width="100%">
 
-- **105 项自动化验证**：纯软件、模拟 COM 或真实文件链路已经自动化测试；
+- **105 项软件验证**：纯软件、模拟 COM 或真实文件链路具备自动化验收；
 - **24 项硬件验证项**：实现已完成，需要真实 ECU、VN 硬件或台架环境；
 - **11 项外部适配项**：实现了稳定接口，需要接入企业身份、问题单或安全系统。
 
@@ -76,6 +142,9 @@ py-canape capabilities
 | 模块 | 主要职责 |
 |---|---|
 | `CANape` | 会话、设备、测量、标定、记录器、网络、诊断和刷写 |
+| `Calibration*` | 标定对象、数据集、版本、变更计划、会话、DOE 和优化 |
+| `CANapeAIToolkit` | AI 工具 Schema、自然语言计划、审批摘要和安全调度 |
+| `MCP Server` | Codex、Claude Code 等 Agent 的本地 stdio 接口 |
 | `AssetManager` | 环境预检、工程资产、版本清单、SHA-256、快照和恢复 |
 | `OfflineData` | CSV、JSON、Parquet、Excel、MDF、BLF、A2L、DBC |
 | `SignalDictionary` | 跨数据源统一名称、单位、类型、范围和转换规则 |
@@ -225,7 +294,7 @@ steps:
 | COM ProgID | `CANape.Application` |
 | COM API | `2.3` |
 | 产品版本读取 | `Application.APPVersion` |
-| 项目打开 | `Open2(..., non_modal=True)` |
+| 项目打开 | Python `non_modal=True` → COM `modalmode=0` |
 | COM 集合索引 | 从 `1` 开始 |
 | pywin32 | `>=306,<312` |
 
@@ -242,10 +311,11 @@ CANape 的 vMDM 附属进程可能在 `Quit` 后继续驻留。若短时间内�
 
 ```text
 Ruff                    All checks passed
-Pytest                  31 passed
-Capability registry     140 / 140
+Pytest                  58 passed
+Capability contracts    140 / 140, unique and resolvable
 Dependency check        No broken requirements
 MDF / BLF / DBC         Real file round-trip passed
+MCP                     FastMCP server and tool discovery passed
 Workflow                Validate + Dry-run passed
 ```
 
@@ -272,8 +342,8 @@ py-canape/
 ├─ tests/               单元与工程平台测试
 ├─ examples/            可执行工作流示例
 ├─ scripts/             CANape 只读冒烟脚本
-├─ docs/                架构、ADR 与图片资产
-├─ CAPABILITIES.md      140 项能力注册表
+├─ docs/                架构、AI 联动、ADR 与非 Mermaid 图片资产
+├─ CAPABILITIES.md      140 项能力与逐项验收契约
 ├─ CHANGELOG.md         版本变更记录
 └─ pyproject.toml       构建、依赖与工具配置
 ```

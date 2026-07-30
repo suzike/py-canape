@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import time
+import uuid
 from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from dataclasses import asdict, dataclass, field
@@ -32,13 +33,36 @@ class StepResult:
     attempts: int
     output: Any = None
     error: str | None = None
+    error_category: str | None = None
+    artifacts: list[str] = field(default_factory=list)
 
 
 @dataclass(slots=True)
 class WorkflowResult:
     status: str
+    run_id: str = ""
+    operator: str = ""
+    started_utc: str = ""
     steps: list[StepResult] = field(default_factory=list)
     context: dict[str, Any] = field(default_factory=dict)
+    compensation_steps: list[StepResult] = field(default_factory=list)
+
+    @property
+    def exit_code(self) -> int:
+        return 0 if self.status == "passed" else 1
+
+    def machine_summary(self) -> dict[str, Any]:
+        return {
+            "run_id": self.run_id,
+            "operator": self.operator,
+            "status": self.status,
+            "exit_code": self.exit_code,
+            "passed": sum(item.status == "passed" for item in self.steps),
+            "failed": sum(item.status == "failed" for item in self.steps),
+            "artifacts": [
+                artifact for item in self.steps for artifact in item.artifacts
+            ],
+        }
 
 
 class WorkflowEngine:
@@ -132,7 +156,13 @@ class WorkflowEngine:
             json.dumps(
                 {
                     "status": result.status,
+                    "run_id": result.run_id,
+                    "operator": result.operator,
+                    "started_utc": result.started_utc,
                     "steps": [asdict(item) for item in result.steps],
+                    "compensation_steps": [
+                        asdict(item) for item in result.compensation_steps
+                    ],
                     "context": result.context,
                 },
                 ensure_ascii=False,
@@ -150,22 +180,40 @@ class WorkflowEngine:
         dry_run: bool = False,
         checkpoint: str | os.PathLike[str] | None = None,
         resume: bool = False,
+        operator: str = "",
     ) -> WorkflowResult:
+        run_id = str(uuid.uuid4())
+        started_utc = datetime.now(timezone.utc).isoformat()
         context = {
             "variables": self.merge_variables(definition, overrides=variables),
             "steps": {},
+            "run": {"id": run_id, "operator": operator, "started_utc": started_utc},
         }
         completed: set[str] = set()
         checkpoint_path = Path(checkpoint).resolve() if checkpoint else None
         if resume and checkpoint_path and checkpoint_path.is_file():
             previous = json.loads(checkpoint_path.read_text(encoding="utf-8"))
             context.update(previous.get("context", {}))
+            context["run"] = {
+                "id": run_id,
+                "operator": operator,
+                "started_utc": started_utc,
+                "resumed_from": previous.get("run_id", ""),
+            }
             completed = {
                 item["id"]
                 for item in previous.get("steps", [])
                 if item.get("status") == "passed"
             }
-        result = WorkflowResult(status="running", context=context)
+        result = WorkflowResult(
+            status="running",
+            run_id=run_id,
+            operator=operator,
+            started_utc=started_utc,
+            context=context,
+        )
+        compensations: list[tuple[str, str, dict[str, Any]]] = []
+        had_continued_failures = False
         for index, step in enumerate(definition["steps"], start=1):
             step_id = str(step.get("id", f"step_{index}"))
             action = str(step["action"])
@@ -189,6 +237,7 @@ class WorkflowEngine:
                     0.0,
                     0,
                     output={"arguments": arguments},
+                    artifacts=list(step.get("artifacts", ())),
                 )
                 result.steps.append(step_result)
                 context["steps"][step_id] = asdict(step_result)
@@ -230,14 +279,20 @@ class WorkflowEngine:
                     duration,
                     attempts,
                     error=str(last_error),
+                    error_category=self._classify_error(last_error),
+                    artifacts=list(step.get("artifacts", ())),
                 )
                 result.steps.append(step_result)
                 context["steps"][step_id] = asdict(step_result)
                 result.status = "failed"
+                if step.get("continue_on_error", False):
+                    had_continued_failures = True
+                    if checkpoint_path:
+                        self._save_checkpoint(checkpoint_path, result)
+                    continue
+                self._compensate(compensations, result)
                 if checkpoint_path:
                     self._save_checkpoint(checkpoint_path, result)
-                if step.get("continue_on_error", False):
-                    continue
                 return result
             step_result = StepResult(
                 step_id,
@@ -247,18 +302,124 @@ class WorkflowEngine:
                 duration,
                 attempts,
                 output=output,
+                artifacts=[
+                    str(self._resolve(value, context))
+                    for value in step.get("artifacts", ())
+                ],
             )
             result.steps.append(step_result)
             context["steps"][step_id] = asdict(step_result)
+            compensation = step.get("compensate")
+            if compensation:
+                compensations.append(
+                    (
+                        step_id,
+                        str(compensation["action"]),
+                        self._resolve(compensation.get("with", {}), context),
+                    )
+                )
             for condition in step.get("postconditions", ()):
                 if not self._condition(condition, context):
-                    raise WorkflowError(f"{step_id} 后置条件不满足：{condition}")
+                    step_result.status = "failed"
+                    step_result.error = f"{step_id} 后置条件不满足：{condition}"
+                    step_result.error_category = "validation"
+                    context["steps"][step_id] = asdict(step_result)
+                    result.status = "failed"
+                    self._compensate(compensations, result)
+                    if checkpoint_path:
+                        self._save_checkpoint(checkpoint_path, result)
+                    return result
             if checkpoint_path:
                 self._save_checkpoint(checkpoint_path, result)
-        result.status = "passed"
+        result.status = "completed_with_errors" if had_continued_failures else "passed"
         if checkpoint_path:
             self._save_checkpoint(checkpoint_path, result)
         return result
+
+    @staticmethod
+    def _classify_error(error: Exception) -> str:
+        if isinstance(error, TimeoutError) or "超时" in str(error):
+            return "timeout"
+        if isinstance(error, (PermissionError,)):
+            return "permission"
+        if isinstance(error, (FileNotFoundError, KeyError)):
+            return "dependency"
+        if isinstance(error, ValueError):
+            return "validation"
+        return "execution"
+
+    def _compensate(
+        self,
+        compensations: Sequence[tuple[str, str, dict[str, Any]]],
+        result: WorkflowResult,
+    ) -> None:
+        for source_step, action, arguments in reversed(compensations):
+            started = datetime.now(timezone.utc).isoformat()
+            start = time.monotonic()
+            handler = self.handlers.get(action)
+            if handler is None:
+                result.compensation_steps.append(
+                    StepResult(
+                        f"compensate_{source_step}",
+                        action,
+                        "failed",
+                        started,
+                        0.0,
+                        0,
+                        error=f"未注册补偿动作：{action}",
+                        error_category="dependency",
+                    )
+                )
+                continue
+            try:
+                output = handler.function(**arguments)
+                result.compensation_steps.append(
+                    StepResult(
+                        f"compensate_{source_step}",
+                        action,
+                        "passed",
+                        started,
+                        time.monotonic() - start,
+                        1,
+                        output=output,
+                    )
+                )
+            except Exception as exc:
+                result.compensation_steps.append(
+                    StepResult(
+                        f"compensate_{source_step}",
+                        action,
+                        "failed",
+                        started,
+                        time.monotonic() - start,
+                        1,
+                        error=str(exc),
+                        error_category=self._classify_error(exc),
+                    )
+                )
+
+    @staticmethod
+    def multi_ecu_definition(
+        ecu_names: Sequence[str],
+        *,
+        actions: Sequence[str] = ("device.online", "measurement.configure"),
+    ) -> dict[str, Any]:
+        """Create a deterministic multi-ECU orchestration skeleton."""
+        steps = []
+        for action in actions:
+            for ecu in ecu_names:
+                steps.append(
+                    {
+                        "id": f"{action.replace('.', '_')}_{ecu}",
+                        "action": action,
+                        "with": {"device": ecu},
+                    }
+                )
+        return {"name": "multi-ecu-orchestration", "steps": steps}
+
+    @staticmethod
+    def ci_summary(result: WorkflowResult) -> dict[str, Any]:
+        return result.machine_summary()
 
     def batch(
         self,

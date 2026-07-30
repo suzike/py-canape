@@ -242,6 +242,75 @@ class SignalAnalyzer:
             ),
         }
 
+    def strategy_validation(
+        self,
+        frame: Any,
+        request: str,
+        output: str,
+        *,
+        time_column: str = "time",
+        debounce_seconds: float = 0.0,
+        activation_timeout: float | None = None,
+        maximum_on_seconds: float | None = None,
+        degraded_signal: str | None = None,
+        recovery_signal: str | None = None,
+    ) -> dict[str, Any]:
+        """Quantify debounce, activation delay, time limit, degradation and recovery."""
+        events = self.timing(frame, request, output, time_column=time_column)
+        violations = []
+        request_values = frame[request]
+        times = self._numeric(frame[time_column])
+        request_edges = frame.index[
+            request_values.ne(request_values.shift()) & request_values.astype(bool)
+        ].tolist()
+        for index in request_edges:
+            next_change = frame.index[
+                (frame.index > index) & request_values.ne(request_values.loc[index])
+            ].tolist()
+            end = next_change[0] if next_change else frame.index[-1]
+            duration = float(times.loc[end] - times.loc[index])
+            if duration < debounce_seconds:
+                violations.append(
+                    {
+                        "rule": "debounce",
+                        "time": float(times.loc[index]),
+                        "actual": duration,
+                    }
+                )
+        if activation_timeout is not None:
+            for event in events:
+                if event["delay"] > activation_timeout:
+                    violations.append({"rule": "activation_timeout", **event})
+        if maximum_on_seconds is not None:
+            active = frame[output].astype(bool)
+            groups = active.ne(active.shift()).cumsum()
+            for _, group in frame.assign(_active=active, _time=times).groupby(groups):
+                if not bool(group["_active"].iloc[0]):
+                    continue
+                duration = float(group["_time"].iloc[-1] - group["_time"].iloc[0])
+                if duration > maximum_on_seconds:
+                    violations.append({"rule": "maximum_on_time", "actual": duration})
+        degradation_events = (
+            int(frame[degraded_signal].astype(bool).sum()) if degraded_signal else 0
+        )
+        recovery_events = (
+            int(frame[recovery_signal].astype(bool).sum()) if recovery_signal else 0
+        )
+        if degradation_events and not recovery_events:
+            violations.append(
+                {
+                    "rule": "missing_recovery",
+                    "degradation_events": degradation_events,
+                }
+            )
+        return {
+            "passed": not violations,
+            "activation_events": events,
+            "degradation_events": degradation_events,
+            "recovery_events": recovery_events,
+            "violations": violations,
+        }
+
     def control_metrics(
         self,
         frame: Any,
@@ -373,3 +442,61 @@ class SignalAnalyzer:
             for key, values in grouped.items()
         ]
         return sorted(ranked, key=lambda item: item["count"], reverse=True)
+
+    def cluster_anomalies(
+        self,
+        findings: Sequence[Finding],
+        *,
+        temporal_tolerance: float = 1.0,
+    ) -> list[dict[str, Any]]:
+        """Cluster findings by overlapping time windows and return explainable candidates."""
+        ordered = sorted(
+            findings,
+            key=lambda item: (
+                float("-inf") if item.start is None else item.start,
+                item.signal,
+                item.rule,
+            ),
+        )
+        clusters: list[list[Finding]] = []
+        for finding in ordered:
+            start = finding.start if finding.start is not None else float("-inf")
+            if not clusters:
+                clusters.append([finding])
+                continue
+            current_end = max(
+                item.end if item.end is not None else item.start or float("-inf")
+                for item in clusters[-1]
+            )
+            if start <= current_end + temporal_tolerance:
+                clusters[-1].append(finding)
+            else:
+                clusters.append([finding])
+        severity_weight = {"info": 1, "warning": 2, "error": 3, "critical": 4}
+        result = []
+        for index, cluster in enumerate(clusters, start=1):
+            signals = sorted({item.signal for item in cluster})
+            rules = sorted({item.rule for item in cluster})
+            score = sum(severity_weight.get(item.severity, 1) for item in cluster)
+            result.append(
+                {
+                    "cluster_id": index,
+                    "start": min(
+                        (item.start for item in cluster if item.start is not None),
+                        default=None,
+                    ),
+                    "end": max(
+                        (item.end for item in cluster if item.end is not None),
+                        default=None,
+                    ),
+                    "signals": signals,
+                    "rules": rules,
+                    "score": score,
+                    "explanation": (
+                        f"{len(cluster)} 个异常在同一时间窗重叠，"
+                        f"涉及 {', '.join(signals)}"
+                    ),
+                    "evidence": [asdict(item) for item in cluster],
+                }
+            )
+        return sorted(result, key=lambda item: item["score"], reverse=True)

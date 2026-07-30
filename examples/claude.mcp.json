@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "py-canape": {
+      "type": "stdio",
+      "command": "E:/path/to/Py-canape/.venv/Scripts/py-canape-mcp.exe",
+      "args": [],
+      "env": {
+        "PY_CANAPE_APPROVAL_STORE": "E:/secure/py-canape-approvals.json"
+      }
+    }
+  }
+}

@@ -1,0 +1,6 @@
+# 复制到受信任项目的 .codex/config.toml 后替换机器路径。
+[mcp_servers.py-canape]
+command = "E:/path/to/Py-canape/.venv/Scripts/py-canape-mcp.exe"
+
+[mcp_servers.py-canape.env]
+PY_CANAPE_APPROVAL_STORE = "E:/secure/py-canape-approvals.json"
