@@ -447,15 +447,29 @@ def _schema(
 class CANapeAIToolkit:
     """将 CANape 安全地暴露为细粒度 AI 工具。"""
 
-    def __init__(self, canape: Any, approvals: ApprovalStore | None = None) -> None:
+    def __init__(
+        self,
+        canape: Any,
+        approvals: ApprovalStore | None = None,
+        *,
+        default_project: str | Path | None = None,
+    ) -> None:
         self.canape = canape
+        self.default_project = (
+            str(Path(default_project).expanduser().resolve())
+            if default_project
+            else None
+        )
         self.registry = AIToolRegistry(approvals)
         self._register_tools()
         self.planner = EngineeringCommandPlanner(self.registry)
 
     def _connected(self) -> None:
         if not self.canape.connected:
-            self.canape.connect()
+            if self.default_project:
+                self.canape.open(self.default_project)
+            else:
+                self.canape.connect()
 
     def _project_info(self) -> dict[str, Any]:
         self._connected()

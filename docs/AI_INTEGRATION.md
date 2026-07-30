@@ -23,6 +23,7 @@ MCP Server 使用 stdio，正常启动后不会向标准输出打印日志；MCP
 ```powershell
 codex mcp add Agent2Canape `
   --env AGENT2CANAPE_APPROVAL_STORE=E:\secure\Agent2Canape-approvals.json `
+  --env AGENT2CANAPE_DEFAULT_PROJECT=D:\CANapeProjects\Vehicle `
   -- E:\path\to\Agent2Canape\.venv\Scripts\agent2canape-mcp.exe
 
 codex mcp get Agent2Canape
@@ -36,6 +37,7 @@ command = "E:/path/to/Agent2Canape/.venv/Scripts/agent2canape-mcp.exe"
 
 [mcp_servers.Agent2Canape.env]
 AGENT2CANAPE_APPROVAL_STORE = "E:/secure/Agent2Canape-approvals.json"
+AGENT2CANAPE_DEFAULT_PROJECT = "D:/CANapeProjects/Vehicle"
 ```
 
 CLI 格式以本机 `codex mcp add --help` 为准；项目内示例见
@@ -53,7 +55,8 @@ Claude Code 支持项目级 `.mcp.json`。复制示例并替换路径：
       "command": "E:/path/to/Agent2Canape/.venv/Scripts/agent2canape-mcp.exe",
       "args": [],
       "env": {
-        "AGENT2CANAPE_APPROVAL_STORE": "E:/secure/Agent2Canape-approvals.json"
+        "AGENT2CANAPE_APPROVAL_STORE": "E:/secure/Agent2Canape-approvals.json",
+        "AGENT2CANAPE_DEFAULT_PROJECT": "D:/CANapeProjects/Vehicle"
       }
     }
   }
@@ -63,13 +66,48 @@ Claude Code 支持项目级 `.mcp.json`。复制示例并替换路径：
 也可以使用 CLI：
 
 ```powershell
-claude mcp add Agent2Canape --scope project `
-  --env AGENT2CANAPE_APPROVAL_STORE=E:\secure\Agent2Canape-approvals.json `
-  -- E:\path\to\Agent2Canape\.venv\Scripts\agent2canape-mcp.exe
+claude mcp add Agent2Canape `
+  E:\path\to\Agent2Canape\.venv\Scripts\agent2canape-mcp.exe `
+  --scope project `
+  -e AGENT2CANAPE_APPROVAL_STORE=E:\secure\Agent2Canape-approvals.json `
+  -e AGENT2CANAPE_DEFAULT_PROJECT=D:\CANapeProjects\Vehicle
+
+claude mcp get Agent2Canape
 ```
 
 Claude Code 的项目级 MCP 配置格式参见
 [Anthropic 官方 MCP 文档](https://docs.anthropic.com/en/docs/claude-code/mcp)。
+
+`AGENT2CANAPE_DEFAULT_PROJECT` 是可选的受信任启动配置。设置后，MCP 只在第一个需要
+CANape COM 的工具调用到来时懒加载该工程；单纯的工具发现和自然语言规划不会启动
+CANape。CANape 17 不应在尚未加载工程时读取 `WorkingDirectory`，因此需要直接调用
+`project_info`、设备或标定工具的客户端应配置默认工程，或者先完成 `project_open`
+的外部审批流程。
+
+对于使用 MCP 延迟工具发现不完整的第三方模型代理，或只希望向某个项目暴露最小权限
+工具集，可配置逗号分隔的注册表工具名：
+
+```text
+AGENT2CANAPE_MCP_TOOL_ALLOWLIST=project_info,device_list,calibration_read
+```
+
+允许列表会同时限制 MCP 工具发现、工具清单和自然语言规划结果。未知工具名会让 Server
+启动失败，避免拼写错误造成错误的权限预期。未设置时仍暴露完整工具集。
+
+### 客户端显示 Connected 但模型不调用工具
+
+`codex mcp get` 或 `claude mcp get` 成功只证明客户端完成了 MCP 握手，不等于当前模型
+供应商已经支持工具调用。使用第三方 Claude Code API 代理时，还必须确认代理完整支持
+`tool_use`；启用延迟发现时还需支持 `tool_reference`。若模型请求长时间无工具事件：
+
+1. 先让同一 Claude Code 会话调用一次内置的安全工具，排除 Agent2Canape；
+2. 使用 `claude --debug-file <path>` 检查 `ToolSearch` 和 `tool_use` 事件；
+3. 若内置工具同样无法调用，应切换到支持 Claude Code 工具协议的模型端点；
+4. 若只有延迟发现失败，可使用 `AGENT2CANAPE_MCP_TOOL_ALLOWLIST` 暴露较小工具集。
+
+Codex 的 `PermissionRequest` Hook 和 Agent2Canape 自身的两阶段审批是两层独立门禁。
+前者负责 AI 客户端工具授权，后者负责 CANape 工程动作授权；不应为验证连通性而全局
+关闭任一门禁。
 
 ## 自然语言到工程动作
 

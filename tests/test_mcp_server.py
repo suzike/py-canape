@@ -53,6 +53,61 @@ class MCPServerTests(unittest.TestCase):
         self.assertTrue(structured["executed"])
         self.assertEqual(structured["risk"], "READ_ONLY")
 
+    def test_default_project_is_opened_lazily_before_read_only_call(self):
+        canape = FakeAICANape()
+        server = create_server(
+            canape=canape,
+            default_project=Path("D:/CANape/Example"),
+        )
+        self.assertFalse(canape.connected)
+
+        _, structured = asyncio.run(
+            server.call_tool(
+                "agent2canape_project_info",
+                {
+                    "dry_run": True,
+                    "action_plan_id": "",
+                },
+            )
+        )
+
+        self.assertTrue(structured["executed"])
+        self.assertTrue(canape.connected)
+        self.assertEqual(canape.path, str(Path("D:/CANape/Example").resolve()))
+
+    def test_tool_allowlist_limits_discovery_manifest_and_planning(self):
+        server = create_server(
+            canape=FakeAICANape(),
+            tool_allowlist="project_info",
+        )
+        tools = asyncio.run(server.list_tools())
+        names = {tool.name for tool in tools}
+        self.assertEqual(
+            names,
+            {
+                "agent2canape_tool_manifest",
+                "agent2canape_plan_natural_language",
+                "agent2canape_project_info",
+            },
+        )
+
+        _, manifest = asyncio.run(
+            server.call_tool("agent2canape_tool_manifest", {})
+        )
+        self.assertEqual(
+            [item["name"] for item in manifest["result"]],
+            ["project_info"],
+        )
+
+        _, plan = asyncio.run(
+            server.call_tool(
+                "agent2canape_plan_natural_language",
+                {"request": "flash ecu"},
+            )
+        )
+        self.assertEqual(plan["status"], "not_exposed")
+        self.assertEqual(plan["tool"], "flash_start")
+
 
 if __name__ == "__main__":
     unittest.main()

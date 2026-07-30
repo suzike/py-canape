@@ -4,3 +4,4 @@ command = "E:/path/to/Agent2Canape/.venv/Scripts/agent2canape-mcp.exe"
 
 [mcp_servers.Agent2Canape.env]
 AGENT2CANAPE_APPROVAL_STORE = "E:/secure/Agent2Canape-approvals.json"
+AGENT2CANAPE_DEFAULT_PROJECT = "D:/CANapeProjects/Vehicle"

@@ -17,6 +17,8 @@ def create_server(
     *,
     canape: CANape | None = None,
     approval_file: str | Path | None = None,
+    default_project: str | Path | None = None,
+    tool_allowlist: str | list[str] | tuple[str, ...] | None = None,
 ) -> Any:
     try:
         from mcp.server.fastmcp import FastMCP
@@ -26,10 +28,35 @@ def create_server(
         ) from exc
 
     approval_path = approval_file or os.getenv("AGENT2CANAPE_APPROVAL_STORE")
+    project_path = default_project or os.getenv("AGENT2CANAPE_DEFAULT_PROJECT")
     toolkit = CANapeAIToolkit(
         canape or CANape(),
         approvals=ApprovalStore(approval_path),
+        default_project=project_path,
     )
+    manifest = toolkit.registry.manifest()
+    configured_allowlist = (
+        tool_allowlist
+        if tool_allowlist is not None
+        else os.getenv("AGENT2CANAPE_MCP_TOOL_ALLOWLIST")
+    )
+    allowed_names: set[str] | None = None
+    if configured_allowlist:
+        raw_names = (
+            configured_allowlist.split(",")
+            if isinstance(configured_allowlist, str)
+            else configured_allowlist
+        )
+        allowed_names = {str(name).strip() for name in raw_names if str(name).strip()}
+        registered_names = {item["name"] for item in manifest}
+        unknown_names = sorted(allowed_names - registered_names)
+        if unknown_names:
+            raise ValueError(
+                "AGENT2CANAPE_MCP_TOOL_ALLOWLIST 包含未知工具："
+                + ", ".join(unknown_names)
+            )
+        manifest = [item for item in manifest if item["name"] in allowed_names]
+
     server = FastMCP(
         "Agent2Canape",
         instructions=(
@@ -42,7 +69,7 @@ def create_server(
     @server.tool()
     def agent2canape_tool_manifest() -> list[dict[str, Any]]:
         """列出可用工程工具、输入 Schema、风险和审批要求。"""
-        return toolkit.registry.manifest()
+        return manifest
 
     @server.tool()
     def agent2canape_plan_natural_language(
@@ -50,7 +77,19 @@ def create_server(
         context: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """将自然语言工程请求转换为候选工具和缺失参数；不会执行操作。"""
-        return toolkit.planner.plan(request, context=context)
+        plan = toolkit.planner.plan(request, context=context)
+        if (
+            allowed_names is not None
+            and plan.get("tool")
+            and plan["tool"] not in allowed_names
+        ):
+            return {
+                "status": "not_exposed",
+                "text": request,
+                "tool": plan["tool"],
+                "message": "该工具未包含在当前 MCP 工具允许列表中",
+            }
+        return plan
 
     def expose(item: dict[str, Any]) -> None:
         name = item["name"]
@@ -124,7 +163,7 @@ def create_server(
         )
         server.tool(name=f"agent2canape_{name}", description=invoke.__doc__)(invoke)
 
-    for item in toolkit.registry.manifest():
+    for item in manifest:
         expose(item)
     return server
 
