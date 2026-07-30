@@ -25,7 +25,7 @@ class SecretProvider(Protocol):
 
 
 class EnvironmentSecretProvider:
-    def __init__(self, prefix: str = "PY_CANAPE_SECRET_") -> None:
+    def __init__(self, prefix: str = "AGENT2CANAPE_SECRET_") -> None:
         self.prefix = prefix
 
     def get_secret(self, name: str) -> str:

@@ -123,7 +123,7 @@ class OfflineData:
             return importlib.import_module("pandas")
         except ImportError as exc:
             raise OptionalDependencyError(
-                "表格与时序能力需要安装 py-canape-local[data]"
+                "表格与时序能力需要安装 Agent2Canape[data]"
             ) from exc
 
     def read_table(self, path: str | Path, **kwargs: Any) -> Any:
@@ -167,7 +167,7 @@ class OfflineData:
             asammdf = importlib.import_module("asammdf")
         except ImportError as exc:
             raise OptionalDependencyError(
-                "MDF/MF4 需要安装 py-canape-local[vector-files]"
+                "MDF/MF4 需要安装 Agent2Canape[vector-files]"
             ) from exc
         with asammdf.MDF(str(Path(path).expanduser().resolve())) as mdf:
             return mdf.to_dataframe(
@@ -179,7 +179,7 @@ class OfflineData:
             asammdf = importlib.import_module("asammdf")
         except ImportError as exc:
             raise OptionalDependencyError(
-                "MDF/MF4 需要安装 py-canape-local[vector-files]"
+                "MDF/MF4 需要安装 Agent2Canape[vector-files]"
             ) from exc
         source = Path(path).expanduser().resolve()
         with asammdf.MDF(str(source)) as mdf:
@@ -213,7 +213,7 @@ class OfflineData:
             can = importlib.import_module("can")
         except ImportError as exc:
             raise OptionalDependencyError(
-                "BLF 需要安装 py-canape-local[vector-files]"
+                "BLF 需要安装 Agent2Canape[vector-files]"
             ) from exc
         pd = self._pandas()
         rows = []
@@ -249,7 +249,7 @@ class OfflineData:
             cantools = importlib.import_module("cantools")
         except ImportError as exc:
             raise OptionalDependencyError(
-                "DBC 解码需要安装 py-canape-local[vector-files]"
+                "DBC 解码需要安装 Agent2Canape[vector-files]"
             ) from exc
         pd = self._pandas()
         database = cantools.database.load_file(str(Path(dbc_file).resolve()))

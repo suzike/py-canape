@@ -1,4 +1,4 @@
-# py-canape 工程平台架构
+# Agent2Canape 工程平台架构
 
 ## 需求
 
@@ -7,7 +7,8 @@
 - 覆盖 `CAPABILITIES.md` 中 1—140 项能力；
 - 同时支持在线 CANape COM、离线工程数据、自动分析和任务编排；
 - 核心包不绑定车型、ECU、信号名、DID、Seed/Key 或企业系统；
-- 所有写操作具备权限、范围、前置条件、审计和 Dry-run。
+- 自动编排写操作默认拒绝，必须显式放行；车型级权限、范围、前置条件和审计由
+  `SafetyPolicy`、`SafeCANape`、工作流配置与企业适配器共同提供。
 
 ### 非功能
 
@@ -59,6 +60,7 @@ Workflow Engine ---- Safety Policy ---- Audit Trail
 | 可选解析器缺失 | 抛出带 extra 名称的依赖错误 |
 | ECU 写入越界 | SafetyPolicy 在 COM 调用前拒绝 |
 | 工作流中断 | 保存检查点并逆序执行显式补偿；失败动作分类后停止 |
+| 工作流未授权写入 | 默认拒绝 `write=True` 动作，需显式 `allow_writes=True` |
 | AI 参数被篡改或重复执行 | SHA-256 绑定工具与参数，原子认领，计划只使用一次 |
 | 曲线/MAP 轴或维度错误 | 写入前校验轴递增、矩阵形状和上下限 |
 | 报告生成失败 | 保留原始 JSON 审计和证据文件 |

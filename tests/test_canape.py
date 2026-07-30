@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 
-from py_canape import CANape, CANapeCOMError, CANapeNotConnectedError
+from agent2canape import CANape, CANapeCOMError, CANapeNotConnectedError
 
 
 class FakeCollection:
@@ -391,7 +391,7 @@ class CANapeTests(unittest.TestCase):
     def test_calibration_batch_rolls_back_attempted_values(self):
         offset = self.canape.get_device("ECU").CalibrationObjects.Item("Offset")
         offset.FailWrite = True
-        with self.assertLogs("py_canape", level="ERROR"), self.assertRaises(CANapeCOMError):
+        with self.assertLogs("agent2canape", level="ERROR"), self.assertRaises(CANapeCOMError):
             self.canape.write_calibration_values(
                 "ECU", {"Gain": 4.0, "Offset": 2.0}
             )

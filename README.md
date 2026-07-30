@@ -1,15 +1,15 @@
 <div align="center">
 
-<img src="./docs/assets/py-canape-hero.png" alt="py-canape 汽车工程自动化平台" width="100%">
+<img src="./docs/assets/agent2canape-hero.png" alt="Agent2Canape 汽车工程自动化平台" width="100%">
 
-# py-canape
+# Agent2Canape
 
 ### 面向整车工程的 CANape 自动化、数据分析与安全编排平台
 
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![CANape](https://img.shields.io/badge/CANape-17.x-0EA5E9)](#canape-17-兼容性)
 [![Capabilities](https://img.shields.io/badge/Capabilities-140%2F140-14B8A6)](./CAPABILITIES.md)
-[![Tests](https://img.shields.io/badge/Tests-58%20passed-22C55E)](#质量与验证)
+[![Tests](https://img.shields.io/badge/Tests-63%20passed-22C55E)](#质量与验证)
 [![License](https://img.shields.io/badge/License-MIT-F59E0B)](./LICENSE)
 
 **ECU 标定 · AI Agent · 在线测量 · 离线分析 · 安全门禁 · 工程闭环**
@@ -23,16 +23,16 @@
 
 ---
 
-## 为什么需要 py-canape
+## 为什么需要 Agent2Canape
 
 真实整车问题排查并不止于“读一个信号”或“写一个标定量”。工程师通常需要同时处理
 CANape 项目、ECU 在线状态、MDF/BLF 数据、A2L/DBC 数据库、标定版本、诊断请求、
 安全前置条件、分析结论和问题单证据。
 
-`py-canape` 首先是一套面向真实 ECU 的标定工具包，同时将问题排查、测量、诊断、
+`Agent2Canape` 首先是一套面向真实 ECU 的标定工具包，同时将问题排查、测量、诊断、
 刷写和数据分析统一到一个可编排、可审计、可扩展的 Python 平台中：
 
-| 工程痛点 | py-canape 提供的能力 |
+| 工程痛点 | Agent2Canape 提供的能力 |
 |---|---|
 | 工具与数据分散 | CANape COM、MDF、BLF、A2L、DBC 使用统一 Python API |
 | 操作过程难复现 | YAML/JSON 场景、资产哈希、检查点和运行审计 |
@@ -46,7 +46,7 @@ CANape 项目、ECU 在线状态、MDF/BLF 数据、A2L/DBC 数据库、标定�
 
 ## ECU 标定是第一主线
 
-`py-canape` 不把标定简化成单个 `SetValue`。它覆盖从标定对象识别到版本基线、实验和
+`Agent2Canape` 不把标定简化成单个 `SetValue`。它覆盖从标定对象识别到版本基线、实验和
 安全提交的完整工程链：
 
 | 标定阶段 | 已实现能力 |
@@ -61,7 +61,7 @@ CANape 项目、ECU 在线状态、MDF/BLF 数据、A2L/DBC 数据库、标定�
 | AI 驱动 | 自然语言规划、MCP 工具、参数摘要绑定、单次外部审批 |
 
 ```python
-from py_canape import CalibrationChange, CalibrationDataset, CalibrationPlan
+from agent2canape import CalibrationChange, CalibrationDataset, CalibrationPlan
 
 plan = CalibrationPlan(
     name="torque-response-v3",
@@ -96,7 +96,7 @@ result = plan.apply(canape, "VCU")
 
 ```powershell
 .\.venv\Scripts\python.exe -m pip install -e ".[ai]"
-.\.venv\Scripts\py-canape-mcp.exe
+.\.venv\Scripts\agent2canape-mcp.exe
 ```
 
 AI 先把“读取 VCU 的扭矩限制”“修改 TorqueCurve”“启动测量”等自然语言转换为带
@@ -113,12 +113,12 @@ Codex、Claude Code 配置、审批协议和示例见
 
 <img src="./docs/assets/capability-overview.svg" alt="140 项工程能力验证分布" width="100%">
 
-- **105 项软件验证**：纯软件、模拟 COM 或真实文件链路具备自动化验收；
+- **105 项软件验收等级**：实现入口可解析，其中关键链路具备纯软件、模拟 COM 或真实文件测试；
 - **24 项硬件验证项**：实现已完成，需要真实 ECU、VN 硬件或台架环境；
 - **11 项外部适配项**：实现了稳定接口，需要接入企业身份、问题单或安全系统。
 
 ```powershell
-py-canape capabilities
+agent2canape capabilities
 ```
 
 期望结果：
@@ -135,9 +135,13 @@ py-canape capabilities
 详细编号、能力名称、实现入口和验证等级见
 [CAPABILITIES.md](./CAPABILITIES.md)。
 
+注册表验证证明能力编号、契约和调用入口完整，不代表 140 项均已在真实 ECU 上完成独立
+行为验收。模块级结论、已修复问题和后续增强清单见
+[最终工程审查](./docs/ENGINEERING_AUDIT.md)。
+
 ## 平台架构
 
-<img src="./docs/assets/architecture.svg" alt="py-canape 平台架构" width="100%">
+<img src="./docs/assets/architecture.svg" alt="Agent2Canape 平台架构" width="100%">
 
 | 模块 | 主要职责 |
 |---|---|
@@ -172,9 +176,10 @@ py-canape capabilities
 
 ### 安装
 
+进入已获取的 Agent2Canape 源码目录：
+
 ```powershell
-git clone https://github.com/suzike/py-canape.git
-cd py-canape
+cd Agent2Canape
 
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install --upgrade pip
@@ -190,14 +195,14 @@ python -m venv .venv
 ### 环境自检
 
 ```powershell
-.\.venv\Scripts\py-canape.exe check
-.\.venv\Scripts\py-canape.exe capabilities
+.\.venv\Scripts\agent2canape.exe check
+.\.venv\Scripts\agent2canape.exe capabilities
 ```
 
 ### 打开 CANape 项目
 
 ```python
-from py_canape import CANape
+from agent2canape import CANape
 
 with CANape() as canape:
     canape.open(r"D:\CANapeProjects\VehicleProject")
@@ -210,7 +215,7 @@ with CANape() as canape:
 ### 安全标定
 
 ```python
-from py_canape import PermissionLevel, SafetyPolicy, SafeCANape, ValueRule
+from agent2canape import PermissionLevel, SafetyPolicy, SafeCANape, ValueRule
 
 policy = SafetyPolicy(
     maximum_permission=PermissionLevel.CALIBRATION_WRITE,
@@ -232,10 +237,13 @@ safe_canape.write_calibration(
 ### 执行工程工作流
 
 ```powershell
-py-canape workflow-validate examples\engineering_workflow.yaml
-py-canape workflow-run examples\engineering_workflow.yaml --dry-run
-py-canape workflow-run examples\engineering_workflow.yaml
+agent2canape workflow-validate examples\engineering_workflow.yaml
+agent2canape workflow-run examples\engineering_workflow.yaml --dry-run
+agent2canape workflow-run examples\engineering_workflow.yaml
 ```
+
+包含写动作的工作流默认拒绝执行，工程师确认安全策略和恢复方案后必须显式增加
+`--allow-writes`。Dry-run 不需要该参数。
 
 示例工作流：
 
@@ -247,15 +255,15 @@ variables:
 steps:
   - id: preflight
     action: assets.preflight
-    arguments:
-      required_paths: [./src/py_canape]
-      output_directory: ${output}
+    with:
+      required_paths: [./src/agent2canape]
+      output_directory: ${variables.output}
 
   - id: manifest
     action: assets.manifest
-    arguments:
-      roots: [./src/py_canape]
-      output_file: ${output}/asset-manifest.json
+    with:
+      roots: [./src/agent2canape]
+      output_file: ./build/evidence/asset-manifest.json
 ```
 
 ## 适用专业
@@ -311,7 +319,7 @@ CANape 的 vMDM 附属进程可能在 `Quit` 后继续驻留。若短时间内�
 
 ```text
 Ruff                    All checks passed
-Pytest                  58 passed
+Pytest                  63 passed
 Capability contracts    140 / 140, unique and resolvable
 Dependency check        No broken requirements
 MDF / BLF / DBC         Real file round-trip passed
@@ -325,7 +333,7 @@ Workflow                Validate + Dry-run passed
 .\.venv\Scripts\ruff.exe check src tests scripts examples
 .\.venv\Scripts\python.exe -m pytest -q
 .\.venv\Scripts\python.exe -m pip check
-.\.venv\Scripts\py-canape.exe capabilities
+.\.venv\Scripts\agent2canape.exe capabilities
 ```
 
 CANape 只读冒烟：
@@ -337,8 +345,8 @@ CANape 只读冒烟：
 ## 项目结构
 
 ```text
-py-canape/
-├─ src/py_canape/       核心 Python 包
+Agent2Canape/
+├─ src/agent2canape/       核心 Python 包
 ├─ tests/               单元与工程平台测试
 ├─ examples/            可执行工作流示例
 ├─ scripts/             CANape 只读冒烟脚本

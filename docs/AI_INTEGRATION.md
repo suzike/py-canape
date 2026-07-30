@@ -1,6 +1,6 @@
 # AI Agent 与 CANape 联动
 
-`py-canape` 提供本地 stdio MCP Server，使 Codex、Claude Code 和其他 MCP 客户端能够用
+`Agent2Canape` 提供本地 stdio MCP Server，使 Codex、Claude Code 和其他 MCP 客户端能够用
 自然语言规划 CANape 工程动作。核心原则是：AI 可以读取、分析和生成动作计划，但任何
 项目控制、测量控制、标定写入、内存写入、诊断或刷写都不能绕过外部审批。
 
@@ -11,7 +11,7 @@
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -e ".[all]"
-.\.venv\Scripts\py-canape-mcp.exe
+.\.venv\Scripts\agent2canape-mcp.exe
 ```
 
 MCP Server 使用 stdio，正常启动后不会向标准输出打印日志；MCP 协议消息由客户端管理。
@@ -21,21 +21,21 @@ MCP Server 使用 stdio，正常启动后不会向标准输出打印日志；MCP
 推荐用当前 Codex CLI 直接添加项目的本地 MCP Server：
 
 ```powershell
-codex mcp add py-canape `
-  --env PY_CANAPE_APPROVAL_STORE=E:\secure\py-canape-approvals.json `
-  -- E:\path\to\Py-canape\.venv\Scripts\py-canape-mcp.exe
+codex mcp add Agent2Canape `
+  --env AGENT2CANAPE_APPROVAL_STORE=E:\secure\Agent2Canape-approvals.json `
+  -- E:\path\to\Agent2Canape\.venv\Scripts\agent2canape-mcp.exe
 
-codex mcp get py-canape
+codex mcp get Agent2Canape
 ```
 
 也可将以下配置放在受信任项目的 `.codex/config.toml`，不要把机器私有路径写入公共模板：
 
 ```toml
-[mcp_servers.py-canape]
-command = "E:/path/to/Py-canape/.venv/Scripts/py-canape-mcp.exe"
+[mcp_servers.Agent2Canape]
+command = "E:/path/to/Agent2Canape/.venv/Scripts/agent2canape-mcp.exe"
 
-[mcp_servers.py-canape.env]
-PY_CANAPE_APPROVAL_STORE = "E:/secure/py-canape-approvals.json"
+[mcp_servers.Agent2Canape.env]
+AGENT2CANAPE_APPROVAL_STORE = "E:/secure/Agent2Canape-approvals.json"
 ```
 
 CLI 格式以本机 `codex mcp add --help` 为准；项目内示例见
@@ -48,12 +48,12 @@ Claude Code 支持项目级 `.mcp.json`。复制示例并替换路径：
 ```json
 {
   "mcpServers": {
-    "py-canape": {
+    "Agent2Canape": {
       "type": "stdio",
-      "command": "E:/path/to/Py-canape/.venv/Scripts/py-canape-mcp.exe",
+      "command": "E:/path/to/Agent2Canape/.venv/Scripts/agent2canape-mcp.exe",
       "args": [],
       "env": {
-        "PY_CANAPE_APPROVAL_STORE": "E:/secure/py-canape-approvals.json"
+        "AGENT2CANAPE_APPROVAL_STORE": "E:/secure/Agent2Canape-approvals.json"
       }
     }
   }
@@ -63,9 +63,9 @@ Claude Code 支持项目级 `.mcp.json`。复制示例并替换路径：
 也可以使用 CLI：
 
 ```powershell
-claude mcp add py-canape --scope project `
-  --env PY_CANAPE_APPROVAL_STORE=E:\secure\py-canape-approvals.json `
-  -- E:\path\to\Py-canape\.venv\Scripts\py-canape-mcp.exe
+claude mcp add Agent2Canape --scope project `
+  --env AGENT2CANAPE_APPROVAL_STORE=E:\secure\Agent2Canape-approvals.json `
+  -- E:\path\to\Agent2Canape\.venv\Scripts\agent2canape-mcp.exe
 ```
 
 Claude Code 的项目级 MCP 配置格式参见
@@ -84,7 +84,7 @@ Claude Code 的项目级 MCP 配置格式参见
 向 GW 发送诊断请求 22 F1 90
 ```
 
-服务首先调用 `py_canape_plan_natural_language`，返回候选工具、结构化参数、风险等级和
+服务首先调用 `agent2canape_plan_natural_language`，返回候选工具、结构化参数、风险等级和
 缺失参数。读取动作可以直接执行；非只读动作默认只返回 `Action Plan`。
 
 ## 两阶段审批协议
@@ -94,7 +94,7 @@ Claude Code 的项目级 MCP 配置格式参见
 3. 工程师在 MCP 之外审批：
 
    ```powershell
-   py-canape ai-approve <plan-id> --approver "calibration-engineer"
+   agent2canape ai-approve <plan-id> --approver "calibration-engineer"
    ```
 
 4. AI 使用完全相同的参数、`dry_run=false` 和 `action_plan_id` 再次调用。

@@ -122,13 +122,18 @@ class Reporter:
         output = Path(output_file).expanduser().resolve()
         output.parent.mkdir(parents=True, exist_ok=True)
         manifest = {"created_utc": datetime.now(timezone.utc).isoformat(), "files": []}
+        archive_names: set[str] = set()
         with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive:
             for value in files:
                 path = Path(value).expanduser().resolve()
                 if not path.is_file():
                     raise FileNotFoundError(path)
+                archive_name = f"evidence/{path.name}"
+                if archive_name.casefold() in archive_names:
+                    raise ValueError(f"证据包存在同名文件：{path.name}")
+                archive_names.add(archive_name.casefold())
                 digest = hashlib.sha256(path.read_bytes()).hexdigest()
-                archive.write(path, arcname=f"evidence/{path.name}")
+                archive.write(path, arcname=archive_name)
                 manifest["files"].append(
                     {"name": path.name, "size": path.stat().st_size, "sha256": digest}
                 )
@@ -180,7 +185,7 @@ class Reporter:
             import openpyxl
         except ImportError as exc:
             raise OptionalDependencyError(
-                "Excel 报告需要安装 py-canape-local[reports]"
+                "Excel 报告需要安装 Agent2Canape[reports]"
             ) from exc
         output = Path(output_file).expanduser().resolve()
         output.parent.mkdir(parents=True, exist_ok=True)
@@ -209,7 +214,7 @@ class Reporter:
             from docx import Document
         except ImportError as exc:
             raise OptionalDependencyError(
-                "Word 报告需要安装 py-canape-local[reports]"
+                "Word 报告需要安装 Agent2Canape[reports]"
             ) from exc
         output = Path(output_file).expanduser().resolve()
         output.parent.mkdir(parents=True, exist_ok=True)

@@ -3,14 +3,14 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "py-canape-local"
-version = "2.0.0"
+name = "agent2canape"
+version = "3.0.0"
 description = "面向通用整车工程任务的 Vector CANape 自动化与分析平台"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
 license-files = ["LICENSE"]
-authors = [{ name = "py-canape contributors" }]
+authors = [{ name = "Agent2Canape contributors" }]
 dependencies = [
   "pywin32>=306,<312; platform_system == 'Windows'",
   "PyYAML>=6.0",
@@ -61,14 +61,14 @@ target-version = "py310"
 select = ["E", "F", "I", "B", "UP", "SIM"]
 
 [project.scripts]
-py-canape = "py_canape.cli:main"
-py-canape-mcp = "py_canape.mcp_server:main"
+agent2canape = "agent2canape.cli:main"
+agent2canape-mcp = "agent2canape.mcp_server:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-data]
-py_canape = ["capability_names.json"]
+agent2canape = ["capability_names.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

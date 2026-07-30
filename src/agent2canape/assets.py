@@ -322,6 +322,8 @@ class AssetManager:
         destination_path = Path(destination).expanduser().resolve()
         if not source_path.is_dir():
             raise NotADirectoryError(source_path)
+        if destination_path == source_path or source_path in destination_path.parents:
+            raise AssetValidationError("快照目录不能等于或位于源目录内部")
         if destination_path.exists():
             raise FileExistsError(destination_path)
         shutil.copytree(
@@ -341,6 +343,16 @@ class AssetManager:
     ) -> Path:
         snapshot_path = Path(snapshot).expanduser().resolve()
         destination_path = Path(destination).expanduser().resolve()
+        if not snapshot_path.is_dir():
+            raise NotADirectoryError(snapshot_path)
+        if destination_path == snapshot_path or snapshot_path in destination_path.parents:
+            raise AssetValidationError("恢复目录不能等于或位于快照目录内部")
+        protected = {
+            Path(destination_path.anchor).resolve(),
+            Path.home().resolve(),
+        }
+        if destination_path in protected:
+            raise AssetValidationError(f"拒绝覆盖受保护目录：{destination_path}")
         if destination_path.exists() and not overwrite:
             raise FileExistsError(destination_path)
         if destination_path.exists():

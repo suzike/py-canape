@@ -1,6 +1,6 @@
 # 参与贡献
 
-感谢参与 `py-canape`。本项目面向真实整车工程场景，提交内容应保持可追踪、可验证和
+感谢参与 `Agent2Canape`。本项目面向真实整车工程场景，提交内容应保持可追踪、可验证和
 安全优先。
 
 ## 开发环境
@@ -15,7 +15,7 @@ python -m venv .venv
 ```powershell
 .\.venv\Scripts\ruff.exe check src tests scripts examples
 .\.venv\Scripts\python.exe -m pytest -q
-.\.venv\Scripts\py-canape.exe capabilities
+.\.venv\Scripts\agent2canape.exe capabilities
 ```
 
 ## 贡献要求

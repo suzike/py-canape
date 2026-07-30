@@ -13,8 +13,8 @@
   <g filter="url(#shadow)">
     <rect x="56" y="132" width="334" height="210" rx="22" fill="#0c3539" stroke="#2dd4bf"/>
     <text x="223" y="196" text-anchor="middle" fill="#5eead4" font-family="Segoe UI,Arial,sans-serif" font-size="58" font-weight="800">105</text>
-    <text x="223" y="230" text-anchor="middle" fill="#ccfbf1" font-family="Segoe UI,Arial,sans-serif" font-size="19" font-weight="700">自动化软件验证</text>
-    <text x="223" y="259" text-anchor="middle" fill="#99f6e4" font-family="Segoe UI,Arial,sans-serif" font-size="14">Automated</text>
+    <text x="223" y="230" text-anchor="middle" fill="#ccfbf1" font-family="Segoe UI,Arial,sans-serif" font-size="19" font-weight="700">软件验收等级</text>
+    <text x="223" y="259" text-anchor="middle" fill="#99f6e4" font-family="Segoe UI,Arial,sans-serif" font-size="14">Software Acceptance Tier</text>
     <rect x="96" y="291" width="254" height="12" rx="6" fill="#153f43"/>
     <rect x="96" y="291" width="191" height="12" rx="6" fill="#2dd4bf"/>
 

@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 
-from py_canape import (
+from agent2canape import (
     ApprovalStore,
     CalibrationKind,
     CalibrationParameter,
@@ -86,6 +86,9 @@ class FakeAICANape:
 
     def is_measurement_running(self):
         return self.measurement
+
+    def get_measurement_state(self):
+        return 2 if self.measurement else 0
 
     def read_memory(self, device, address, size, *, address_extension=0):
         return tuple(range(size))
@@ -247,6 +250,15 @@ class AIToolTests(unittest.TestCase):
             self.toolkit.registry.invoke(
                 "project_info", {"arbitrary_com_method": "Quit"}
             )
+        with self.assertRaises(TypeError):
+            self.toolkit.registry.invoke(
+                "memory_read",
+                {"device": "ECU", "address": True, "size": 1},
+            )
+
+    def test_measurement_state_serializes_integer_com_state(self):
+        result = self.toolkit.registry.invoke("measurement_state")
+        self.assertEqual(result["result"], {"state": 0, "running": False})
 
 
 if __name__ == "__main__":

@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 
-from py_canape import CANape
+from agent2canape import CANape
 
 
 def main() -> int:

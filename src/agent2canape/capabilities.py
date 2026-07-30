@@ -125,7 +125,7 @@ class CapabilityRegistry:
             name=name,
             implementation=IMPLEMENTATIONS[number],
             verification=VERIFICATION[number],
-            contract_id=f"PYC-{number:03d}",
+            contract_id=f"A2C-{number:03d}",
             acceptance=(
                 f"调用 {IMPLEMENTATIONS[number]} 完成“{name}”，"
                 f"并按 {VERIFICATION[number]} 等级留存结果或现场证据"
@@ -136,7 +136,7 @@ class CapabilityRegistry:
     def default(cls) -> CapabilityRegistry:
         import json
 
-        resource = files("py_canape").joinpath("capability_names.json")
+        resource = files("agent2canape").joinpath("capability_names.json")
         names = json.loads(resource.read_text(encoding="utf-8"))
         return cls(
             [

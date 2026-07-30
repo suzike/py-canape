@@ -92,16 +92,42 @@ class WorkflowEngine:
             data = yaml.safe_load(source.read_text(encoding="utf-8"))
         else:
             data = json.loads(source.read_text(encoding="utf-8"))
-        if not isinstance(data, dict) or not isinstance(data.get("steps"), list):
-            raise WorkflowError("工作流必须是包含 steps 数组的对象")
+        WorkflowEngine.validate_definition(data)
         return data
+
+    @staticmethod
+    def validate_definition(definition: Any) -> None:
+        if not isinstance(definition, Mapping) or not isinstance(
+            definition.get("steps"), list
+        ):
+            raise WorkflowError("工作流必须是包含 steps 数组的对象")
+        identifiers: set[str] = set()
+        for index, step in enumerate(definition["steps"], start=1):
+            if not isinstance(step, Mapping):
+                raise WorkflowError(f"第 {index} 个步骤必须是对象")
+            if not str(step.get("action", "")).strip():
+                raise WorkflowError(f"第 {index} 个步骤缺少 action")
+            step_id = str(step.get("id", f"step_{index}"))
+            if step_id in identifiers:
+                raise WorkflowError(f"工作流步骤 id 重复：{step_id}")
+            identifiers.add(step_id)
+            if "arguments" in step:
+                raise WorkflowError(
+                    f"{step_id} 使用了未知字段 arguments；工作流参数字段应为 with"
+                )
+            if "with" in step and not isinstance(step["with"], Mapping):
+                raise WorkflowError(f"{step_id}.with 必须是对象")
+            if "timeout" in step and float(step["timeout"]) <= 0:
+                raise WorkflowError(f"{step_id}.timeout 必须大于 0")
+            if "retries" in step and int(step["retries"]) < 0:
+                raise WorkflowError(f"{step_id}.retries 不能为负数")
 
     @staticmethod
     def merge_variables(
         definition: Mapping[str, Any],
         *,
         overrides: Mapping[str, Any] | None = None,
-        environment_prefix: str = "PY_CANAPE_VAR_",
+        environment_prefix: str = "AGENT2CANAPE_VAR_",
     ) -> dict[str, Any]:
         variables = dict(definition.get("variables", {}))
         for key, value in os.environ.items():
@@ -178,10 +204,12 @@ class WorkflowEngine:
         *,
         variables: Mapping[str, Any] | None = None,
         dry_run: bool = False,
+        allow_writes: bool = False,
         checkpoint: str | os.PathLike[str] | None = None,
         resume: bool = False,
         operator: str = "",
     ) -> WorkflowResult:
+        self.validate_definition(definition)
         run_id = str(uuid.uuid4())
         started_utc = datetime.now(timezone.utc).isoformat()
         context = {
@@ -222,6 +250,10 @@ class WorkflowEngine:
             handler = self.handlers.get(action)
             if handler is None:
                 raise WorkflowError(f"未注册工作流动作：{action}")
+            if handler.write and not dry_run and not allow_writes:
+                raise WorkflowError(
+                    f"{step_id} 是写操作；必须显式传入 allow_writes=True"
+                )
             for condition in step.get("preconditions", ()):
                 if not self._condition(condition, context):
                     raise WorkflowError(f"{step_id} 前置条件不满足：{condition}")
@@ -252,9 +284,12 @@ class WorkflowEngine:
                 attempts = attempt + 1
                 try:
                     if timeout is not None and handler.thread_safe:
-                        with ThreadPoolExecutor(max_workers=1) as executor:
+                        executor = ThreadPoolExecutor(max_workers=1)
+                        try:
                             future = executor.submit(handler.function, **arguments)
                             output = future.result(timeout=float(timeout))
+                        finally:
+                            executor.shutdown(wait=False, cancel_futures=True)
                     else:
                         output = handler.function(**arguments)
                         if timeout is not None and time.monotonic() - start > float(timeout):
@@ -427,8 +462,14 @@ class WorkflowEngine:
         parameter_sets: Sequence[Mapping[str, Any]],
         *,
         dry_run: bool = False,
+        allow_writes: bool = False,
     ) -> list[WorkflowResult]:
         return [
-            self.execute(definition, variables=parameters, dry_run=dry_run)
+            self.execute(
+                definition,
+                variables=parameters,
+                dry_run=dry_run,
+                allow_writes=allow_writes,
+            )
             for parameters in parameter_sets
         ]

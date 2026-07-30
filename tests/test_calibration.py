@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
 from pathlib import Path
 
-from py_canape import (
+from agent2canape import (
     CalibrationChange,
     CalibrationDataset,
     CalibrationExperiment,
@@ -131,6 +132,22 @@ class CalibrationDatasetTests(unittest.TestCase):
             self.assertEqual(repository.compare("v1", "v2")["Scalar"]["after"], 2.0)
             output = repository.restore("v1", Path(directory) / "restored.json")
             self.assertTrue(output.is_file())
+
+    def test_repository_rejects_path_traversal_and_tampered_version(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repository = CalibrationRepository(directory)
+            repository.save(self.make_dataset(), "v1")
+            with self.assertRaises(ValueError):
+                repository.load("../v1")
+            version_file = Path(directory) / "v1.json"
+            data = json.loads(version_file.read_text(encoding="utf-8"))
+            data["parameters"]["Scalar"]["value"] = 9.0
+            version_file.write_text(
+                json.dumps(data, ensure_ascii=False),
+                encoding="utf-8",
+            )
+            with self.assertRaises(SafetyViolationError):
+                repository.load("v1")
 
     def test_parameter_shape_and_axis_validation(self):
         invalid = CalibrationParameter(

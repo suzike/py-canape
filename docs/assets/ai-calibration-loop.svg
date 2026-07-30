@@ -23,7 +23,7 @@
     </g>
     <g transform="translate(410 150)">
       <rect width="280" height="270" rx="22" fill="#17324a" stroke="#4ea8de" stroke-width="2"/>
-      <text x="30" y="56" fill="#fff" font-size="25" font-weight="700">py-canape MCP</text>
+      <text x="30" y="56" fill="#fff" font-size="25" font-weight="700">Agent2Canape MCP</text>
       <text x="30" y="105" fill="#b9d9e7" font-size="18">Schema 参数校验</text>
       <text x="30" y="140" fill="#b9d9e7" font-size="18">风险分级</text>
       <text x="30" y="175" fill="#b9d9e7" font-size="18">Action Plan + SHA-256</text>

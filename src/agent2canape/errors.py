@@ -1,8 +1,8 @@
-"""py-canape 异常类型。"""
+"""Agent2Canape 异常类型。"""
 
 
 class CANapeError(RuntimeError):
-    """py-canape 的基础异常。"""
+    """Agent2Canape 的基础异常。"""
 
 
 class CANapeNotConnectedError(CANapeError):

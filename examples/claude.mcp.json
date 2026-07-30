@@ -1,11 +1,11 @@
 {
   "mcpServers": {
-    "py-canape": {
+    "Agent2Canape": {
       "type": "stdio",
-      "command": "E:/path/to/Py-canape/.venv/Scripts/py-canape-mcp.exe",
+      "command": "E:/path/to/Agent2Canape/.venv/Scripts/agent2canape-mcp.exe",
       "args": [],
       "env": {
-        "PY_CANAPE_APPROVAL_STORE": "E:/secure/py-canape-approvals.json"
+        "AGENT2CANAPE_APPROVAL_STORE": "E:/secure/Agent2Canape-approvals.json"
       }
     }
   }

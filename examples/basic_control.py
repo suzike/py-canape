@@ -3,7 +3,7 @@
 修改 PROJECT、DEVICE、TASK、CHANNEL 后运行。写标定值前请确认 ECU 状态安全。
 """
 
-from py_canape import CANape
+from agent2canape import CANape
 
 PROJECT = r"D:\path\to\canape_project"
 DEVICE = "XCPsim"

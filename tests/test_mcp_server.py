@@ -8,7 +8,7 @@ from pathlib import Path
 
 from test_ai_tools import FakeAICANape
 
-from py_canape.mcp_server import create_server
+from agent2canape.mcp_server import create_server
 
 
 @unittest.skipUnless(importlib.util.find_spec("mcp"), "需要可选依赖 mcp")
@@ -21,14 +21,14 @@ class MCPServerTests(unittest.TestCase):
             )
             tools = asyncio.run(server.list_tools())
         names = {tool.name for tool in tools}
-        self.assertIn("py_canape_tool_manifest", names)
-        self.assertIn("py_canape_plan_natural_language", names)
-        self.assertIn("py_canape_calibration_read", names)
-        self.assertIn("py_canape_calibration_write", names)
-        self.assertIn("py_canape_flash_start", names)
+        self.assertIn("agent2canape_tool_manifest", names)
+        self.assertIn("agent2canape_plan_natural_language", names)
+        self.assertIn("agent2canape_calibration_read", names)
+        self.assertIn("agent2canape_calibration_write", names)
+        self.assertIn("agent2canape_flash_start", names)
         self.assertGreaterEqual(len(names), 25)
         calibration_write = next(
-            tool for tool in tools if tool.name == "py_canape_calibration_write"
+            tool for tool in tools if tool.name == "agent2canape_calibration_write"
         )
         self.assertIn("device", calibration_write.inputSchema["properties"])
         self.assertIn("value", calibration_write.inputSchema["properties"])
@@ -38,7 +38,7 @@ class MCPServerTests(unittest.TestCase):
         server = create_server(canape=FakeAICANape())
         _, structured = asyncio.run(
             server.call_tool(
-                "py_canape_project_info",
+                "agent2canape_project_info",
                 {
                     "dry_run": True,
                     "action_plan_id": "",

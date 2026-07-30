@@ -25,7 +25,7 @@ from .models import (
     TaskInfo,
 )
 
-LOGGER = logging.getLogger("py_canape")
+LOGGER = logging.getLogger("agent2canape")
 _MISSING = object()
 
 

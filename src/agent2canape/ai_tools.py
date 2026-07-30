@@ -85,7 +85,7 @@ class ApprovalStore:
         self.path = (
             Path(path).expanduser().resolve()
             if path
-            else Path.home() / ".py-canape" / "approvals.json"
+            else Path.home() / ".agent2canape" / "approvals.json"
         )
         self.lock_path = self.path.with_suffix(self.path.suffix + ".lock")
         self._lock = threading.RLock()
@@ -274,6 +274,8 @@ class AIToolRegistry:
         }
         for name, value in arguments.items():
             expected = properties.get(name, {}).get("type")
+            if expected in {"number", "integer"} and isinstance(value, bool):
+                raise TypeError(f"参数 {name} 必须是 {expected}")
             if expected in type_map and not isinstance(value, type_map[expected]):
                 raise TypeError(f"参数 {name} 必须是 {expected}")
 
@@ -509,7 +511,14 @@ class CANapeAIToolkit:
     def _measurement_state(self) -> dict[str, Any]:
         self._connected()
         state = self.canape.get_measurement_state()
-        return _object_dict(state) if not isinstance(state, dict) else state
+        if isinstance(state, dict):
+            return state
+        if is_dataclass(state) or hasattr(state, "__dict__"):
+            return _object_dict(state)
+        return {
+            "state": int(state),
+            "running": bool(self.canape.is_measurement_running()),
+        }
 
     def _device_online(self, device: str, download: bool = False) -> dict[str, Any]:
         self._connected()

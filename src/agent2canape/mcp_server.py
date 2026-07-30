@@ -1,4 +1,4 @@
-"""py-canape MCP stdio 服务器。"""
+"""Agent2Canape MCP stdio 服务器。"""
 
 from __future__ import annotations
 
@@ -22,16 +22,16 @@ def create_server(
         from mcp.server.fastmcp import FastMCP
     except ImportError as exc:
         raise OptionalDependencyError(
-            "MCP Server 需要安装 py-canape-local[ai]"
+            "MCP Server 需要安装 Agent2Canape[ai]"
         ) from exc
 
-    approval_path = approval_file or os.getenv("PY_CANAPE_APPROVAL_STORE")
+    approval_path = approval_file or os.getenv("AGENT2CANAPE_APPROVAL_STORE")
     toolkit = CANapeAIToolkit(
         canape or CANape(),
         approvals=ApprovalStore(approval_path),
     )
     server = FastMCP(
-        "py-canape",
+        "Agent2Canape",
         instructions=(
             "面向 ECU 标定、测量、诊断和刷写的 CANape 工程工具。"
             "任何非只读工具必须先 dry_run 生成 Action Plan，"
@@ -40,12 +40,12 @@ def create_server(
     )
 
     @server.tool()
-    def py_canape_tool_manifest() -> list[dict[str, Any]]:
+    def agent2canape_tool_manifest() -> list[dict[str, Any]]:
         """列出可用工程工具、输入 Schema、风险和审批要求。"""
         return toolkit.registry.manifest()
 
     @server.tool()
-    def py_canape_plan_natural_language(
+    def agent2canape_plan_natural_language(
         request: str,
         context: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
@@ -80,7 +80,7 @@ def create_server(
                 action_plan_id=action_plan_id,
             )
 
-        invoke.__name__ = f"py_canape_{name}"
+        invoke.__name__ = f"agent2canape_{name}"
         invoke.__doc__ = (
             f"{description} 非只读操作默认只生成计划；"
             "执行时需传 dry_run=false 和已批准的 action_plan_id。"
@@ -122,7 +122,7 @@ def create_server(
             parameters,
             return_annotation=dict[str, Any],
         )
-        server.tool(name=f"py_canape_{name}", description=invoke.__doc__)(invoke)
+        server.tool(name=f"agent2canape_{name}", description=invoke.__doc__)(invoke)
 
     for item in toolkit.registry.manifest():
         expose(item)

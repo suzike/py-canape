@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import tempfile
+import time
 import unittest
 import zipfile
 from pathlib import Path
@@ -8,8 +9,9 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from py_canape import (
+from agent2canape import (
     AssetManager,
+    AssetValidationError,
     AuditTrail,
     CapabilityRegistry,
     EngineeringPlatform,
@@ -23,8 +25,9 @@ from py_canape import (
     SignalDictionary,
     ValueRule,
     WorkflowEngine,
+    WorkflowError,
 )
-from py_canape.capabilities import IMPLEMENTATIONS
+from agent2canape.capabilities import IMPLEMENTATIONS
 
 
 class CapabilityTests(unittest.TestCase):
@@ -42,7 +45,7 @@ class CapabilityTests(unittest.TestCase):
             [item.name for item in registry.list()],
         )
         for capability in registry.list():
-            self.assertEqual(capability.contract_id, f"PYC-{capability.id:03d}")
+            self.assertEqual(capability.contract_id, f"A2C-{capability.id:03d}")
             self.assertIn(capability.name, capability.acceptance)
             self.assertTrue(
                 callable(CapabilityRegistry.resolve(capability.implementation)),
@@ -84,6 +87,10 @@ class AssetTests(unittest.TestCase):
             snapshot = manager.snapshot(source, root / "snapshot")
             restored = manager.restore(snapshot, root / "restored")
             self.assertTrue((restored / "config.cna").is_file())
+            with self.assertRaises(AssetValidationError):
+                manager.snapshot(source, source / "nested-snapshot")
+            with self.assertRaises(AssetValidationError):
+                manager.restore(snapshot, snapshot / "nested-restore")
 
     def test_topology(self):
         result = AssetManager.validate_topology(
@@ -263,6 +270,18 @@ class AnalysisTests(unittest.TestCase):
         self.assertTrue(
             self.analyzer.causality(self.frame, ["request", "output"])["passed"]
         )
+        oscillation = self.analyzer.state_transitions(
+            pd.DataFrame({"time": [0.0, 1.0, 2.0], "state": [0, 1, 0]}),
+            "state",
+        )
+        self.assertEqual(len(oscillation["oscillations"]), 1)
+        stale_response = pd.DataFrame(
+            {"time": [0.0, 1.0, 2.0], "request": [0, 1, 1], "output": [1, 1, 1]}
+        )
+        self.assertEqual(
+            self.analyzer.timing(stale_response, "request", "output"),
+            [],
+        )
 
     def test_conversion_control_energy_compare(self):
         chain = self.analyzer.conversion_chain(
@@ -360,6 +379,30 @@ class SafetyWorkflowReportingTests(unittest.TestCase):
         self.assertEqual(result.exit_code, 0)
         self.assertEqual(result.machine_summary()["passed"], 1)
 
+    def test_workflow_definition_rejects_silent_argument_typo(self):
+        with self.assertRaises(WorkflowError):
+            WorkflowEngine().execute(
+                {
+                    "steps": [
+                        {
+                            "id": "bad",
+                            "action": "missing",
+                            "arguments": {"value": 1},
+                        }
+                    ]
+                }
+            )
+
+    def test_workflow_timeout_returns_without_waiting_for_worker(self):
+        engine = WorkflowEngine()
+        engine.register("slow", lambda: time.sleep(0.5))
+        started = time.monotonic()
+        result = engine.execute(
+            {"steps": [{"id": "slow", "action": "slow", "timeout": 0.02}]}
+        )
+        self.assertEqual(result.steps[0].error_category, "timeout")
+        self.assertLess(time.monotonic() - started, 0.3)
+
     def test_workflow_compensation_and_multi_ecu(self):
         engine = WorkflowEngine()
         actions = []
@@ -383,6 +426,7 @@ class SafetyWorkflowReportingTests(unittest.TestCase):
                 ]
             },
             operator="tester",
+            allow_writes=True,
         )
         self.assertEqual(result.status, "failed")
         self.assertEqual(actions, [("write", 2), ("restore", 1)])
@@ -411,12 +455,21 @@ class SafetyWorkflowReportingTests(unittest.TestCase):
                         ],
                     }
                 ]
-            }
+            },
+            allow_writes=True,
         )
         self.assertEqual(result.status, "failed")
         self.assertEqual(result.steps[0].error_category, "validation")
         self.assertEqual(actions, ["restored"])
         self.assertEqual(engine.ci_summary(result)["exit_code"], 1)
+
+    def test_workflow_write_requires_explicit_authorization(self):
+        engine = WorkflowEngine()
+        called = []
+        engine.register("write", lambda: called.append(True), write=True)
+        with self.assertRaises(WorkflowError):
+            engine.execute({"steps": [{"id": "write", "action": "write"}]})
+        self.assertEqual(called, [])
 
     def test_audit_evidence_and_reports(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -432,6 +485,14 @@ class SafetyWorkflowReportingTests(unittest.TestCase):
             )
             with zipfile.ZipFile(bundle) as archive:
                 self.assertIn("manifest.json", archive.namelist())
+            other = root / "other"
+            other.mkdir()
+            duplicate = other / evidence.name
+            duplicate.write_text("different", encoding="utf-8")
+            with self.assertRaises(ValueError):
+                Reporter.create_evidence_bundle(
+                    root / "duplicate.zip", files=[evidence, duplicate]
+                )
             html = Reporter.html(
                 root / "report.html", title="Report", sections=[("Result", {"ok": True})]
             )

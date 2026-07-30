@@ -19,7 +19,7 @@
   <circle cx="1070" cy="85" r="170" fill="#0ea5e9" opacity=".07"/>
   <circle cx="120" cy="600" r="210" fill="#14b8a6" opacity=".06"/>
 
-  <text x="64" y="62" fill="#f8fafc" font-family="Segoe UI,Arial,sans-serif" font-size="29" font-weight="700">py-canape Engineering Platform</text>
+  <text x="64" y="62" fill="#f8fafc" font-family="Segoe UI,Arial,sans-serif" font-size="29" font-weight="700">Agent2Canape Engineering Platform</text>
   <text x="64" y="92" fill="#94a3b8" font-family="Segoe UI,Arial,sans-serif" font-size="16">统一编排 · 显式安全 · 在线与离线协同 · 全链路证据</text>
 
   <g filter="url(#shadow)">

@@ -1,4 +1,4 @@
-"""py-canape 命令行入口。"""
+"""Agent2Canape 命令行入口。"""
 
 from __future__ import annotations
 
@@ -113,6 +113,7 @@ def _workflow_run(
     path: str,
     *,
     dry_run: bool,
+    allow_writes: bool,
     checkpoint: str | None,
     resume: bool,
 ) -> int:
@@ -122,6 +123,7 @@ def _workflow_run(
     result = platform_api.workflow.execute(
         definition,
         dry_run=dry_run,
+        allow_writes=allow_writes,
         checkpoint=checkpoint,
         resume=resume,
     )
@@ -212,7 +214,7 @@ def main(argv: list[str] | None = None) -> int:
     if hasattr(sys.stderr, "reconfigure"):
         sys.stderr.reconfigure(encoding="utf-8")
     parser = argparse.ArgumentParser(
-        prog="py-canape", description="Vector CANape COM 控制与诊断工具"
+        prog="Agent2Canape", description="Vector CANape COM 控制与诊断工具"
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -229,6 +231,11 @@ def main(argv: list[str] | None = None) -> int:
     run = subparsers.add_parser("workflow-run", help="执行通用工程工作流")
     run.add_argument("path", type=str)
     run.add_argument("--dry-run", action="store_true")
+    run.add_argument(
+        "--allow-writes",
+        action="store_true",
+        help="显式允许执行工作流中标记为写操作的步骤",
+    )
     run.add_argument("--checkpoint", type=str)
     run.add_argument("--resume", action="store_true")
     manifest = subparsers.add_parser("asset-manifest", help="生成工程资产哈希清单")
@@ -266,6 +273,7 @@ def main(argv: list[str] | None = None) -> int:
         return _workflow_run(
             args.path,
             dry_run=args.dry_run,
+            allow_writes=args.allow_writes,
             checkpoint=args.checkpoint,
             resume=args.resume,
         )

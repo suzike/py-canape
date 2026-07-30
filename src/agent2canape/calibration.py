@@ -7,6 +7,7 @@ import hashlib
 import itertools
 import json
 import math
+import os
 import random
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass, field, replace
@@ -426,6 +427,16 @@ class CalibrationRepository:
         self.root = Path(root).expanduser().resolve()
         self.root.mkdir(parents=True, exist_ok=True)
 
+    @staticmethod
+    def _validate_version(version: str) -> str:
+        if (
+            not version
+            or version in {".", ".."}
+            or any(char in version for char in r'\/:*?"<>|')
+        ):
+            raise ValueError("标定版本名称无效")
+        return version
+
     def save(
         self,
         dataset: CalibrationDataset,
@@ -434,13 +445,13 @@ class CalibrationRepository:
         tags: Sequence[str] = (),
         note: str = "",
     ) -> dict[str, Any]:
-        if not version or any(char in version for char in r'\/:*?"<>|'):
-            raise ValueError("标定版本名称无效")
+        version = self._validate_version(version)
         dataset.require_valid()
         dataset_path = self.root / f"{version}.json"
         if dataset_path.exists():
             raise FileExistsError(f"标定版本已存在：{version}")
-        dataset.save(dataset_path)
+        temporary_dataset = self.root / f".{version}.{os.getpid()}.tmp.json"
+        dataset.save(temporary_dataset)
         record = {
             "version": version,
             "file": dataset_path.name,
@@ -451,12 +462,38 @@ class CalibrationRepository:
             "identity": dict(dataset.identity),
         }
         manifest_path = self.root / "manifest.jsonl"
-        with manifest_path.open("a", encoding="utf-8") as stream:
-            stream.write(json.dumps(record, ensure_ascii=False) + "\n")
+        temporary_manifest = self.root / f".manifest.{os.getpid()}.tmp"
+        existing_manifest = (
+            manifest_path.read_text(encoding="utf-8") if manifest_path.exists() else ""
+        )
+        temporary_manifest.write_text(
+            existing_manifest + json.dumps(record, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
+        try:
+            temporary_dataset.replace(dataset_path)
+            temporary_manifest.replace(manifest_path)
+        finally:
+            temporary_dataset.unlink(missing_ok=True)
+            temporary_manifest.unlink(missing_ok=True)
         return record
 
     def load(self, version: str) -> CalibrationDataset:
-        return CalibrationDataset.load(self.root / f"{version}.json")
+        version = self._validate_version(version)
+        records = {
+            str(item.get("version")): item for item in self.list_versions()
+        }
+        if version not in records:
+            raise KeyError(f"标定版本未登记：{version}")
+        dataset = CalibrationDataset.load(self.root / f"{version}.json")
+        expected = str(records[version].get("sha256", ""))
+        actual = dataset.digest()
+        if not expected or actual != expected:
+            raise SafetyViolationError(
+                f"标定版本完整性校验失败：{version}，"
+                f"expected={expected or '<missing>'} actual={actual}"
+            )
+        return dataset
 
     def list_versions(self) -> list[dict[str, Any]]:
         manifest = self.root / "manifest.jsonl"

@@ -104,7 +104,7 @@ class BasicDomainAdapter:
 
 
 class PluginRegistry:
-    ENTRY_POINT_GROUP = "py_canape.domain_adapters"
+    ENTRY_POINT_GROUP = "agent2canape.domain_adapters"
 
     def __init__(self) -> None:
         self.adapters: dict[str, DomainAdapter] = {}

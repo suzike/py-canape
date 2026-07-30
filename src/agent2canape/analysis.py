@@ -148,8 +148,8 @@ class SignalAnalyzer:
                 item["short_dwell"] = True
             state_start = float(times[index])
         oscillations = [
-            transitions[index - 1 : index + 2]
-            for index in range(1, len(transitions) - 1)
+            transitions[index - 1 : index + 1]
+            for index in range(1, len(transitions))
             if transitions[index - 1]["from"] == transitions[index]["to"]
             and transitions[index - 1]["to"] == transitions[index]["from"]
         ]
@@ -200,10 +200,17 @@ class SignalAnalyzer:
             (frame[trigger] == trigger_value)
             & (frame[trigger].shift() != trigger_value)
         ].tolist()
+        response_edges = frame.index[
+            (frame[response] == response_value)
+            & (frame[response].shift() != response_value)
+        ].tolist()
         results = []
         for index in trigger_edges:
-            later = frame.loc[index:]
-            response_rows = later.index[later[response] == response_value].tolist()
+            response_rows = [
+                response_index
+                for response_index in response_edges
+                if response_index >= index
+            ]
             if response_rows:
                 response_index = response_rows[0]
                 results.append(
@@ -465,7 +472,13 @@ class SignalAnalyzer:
                 clusters.append([finding])
                 continue
             current_end = max(
-                item.end if item.end is not None else item.start or float("-inf")
+                (
+                    item.end
+                    if item.end is not None
+                    else item.start
+                    if item.start is not None
+                    else float("-inf")
+                )
                 for item in clusters[-1]
             )
             if start <= current_end + temporal_tolerance:
