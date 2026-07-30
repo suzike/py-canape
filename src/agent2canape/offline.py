@@ -7,7 +7,6 @@ import json
 import re
 import xml.etree.ElementTree as ET
 from collections.abc import Iterable, Mapping, Sequence
-from contextlib import suppress
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
@@ -266,35 +265,9 @@ class OfflineData:
 
     @staticmethod
     def parse_a2l(path: str | Path) -> list[SignalDefinition]:
-        source = Path(path).expanduser().resolve()
-        text = source.read_text(encoding="latin-1", errors="replace")
-        definitions: list[SignalDefinition] = []
-        pattern = re.compile(
-            r"/begin\s+(MEASUREMENT|CHARACTERISTIC)\s+(\S+)(.*?)/end\s+\1",
-            re.IGNORECASE | re.DOTALL,
-        )
-        for kind, name, body in pattern.findall(text):
-            address_match = re.search(r"\b0x([0-9A-Fa-f]+)\b", body)
-            range_match = re.findall(
-                r"(?<![\w.])[-+]?(?:\d+\.\d+|\d+)(?:[Ee][-+]?\d+)?", body
-            )
-            minimum = maximum = None
-            if len(range_match) >= 2:
-                with suppress(ValueError):
-                    minimum, maximum = map(float, range_match[-2:])
-            definitions.append(
-                SignalDefinition(
-                    name=name,
-                    source=str(source),
-                    data_type=kind.casefold(),
-                    minimum=minimum,
-                    maximum=maximum,
-                    address=(
-                        int(address_match.group(1), 16) if address_match else None
-                    ),
-                )
-            )
-        return definitions
+        from .calibration_formats import A2LCatalog
+
+        return A2LCatalog.parse(path).to_signal_definitions()
 
     @staticmethod
     def parse_dbc(path: str | Path) -> list[SignalDefinition]:

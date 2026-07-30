@@ -9,7 +9,9 @@ import json
 import math
 import os
 import random
+import time
 from collections.abc import Callable, Mapping, Sequence
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field, replace
 from datetime import UTC, datetime
 from enum import Enum
@@ -268,8 +270,12 @@ class CalibrationDataset:
                             _json_value(row[field_name]), ensure_ascii=False
                         )
                     writer.writerow(row)
+        elif output.suffix.casefold() in {".cdfx", ".dcm", ".par"}:
+            from .calibration_formats import CalibrationDatasetIO
+
+            return CalibrationDatasetIO.save(self, output)
         else:
-            raise ValueError("标定数据集仅支持 .json 和 .csv")
+            raise ValueError("标定数据集仅支持 .json、.csv、.cdfx、.dcm 和 .par")
         return output
 
     @classmethod
@@ -294,7 +300,11 @@ class CalibrationDataset:
                     name = row["name"]
                     parameters[name] = CalibrationParameter(**row)
             return cls(parameters=parameters, source=str(source))
-        raise ValueError("标定数据集仅支持 .json 和 .csv")
+        if source.suffix.casefold() in {".cdfx", ".dcm", ".par"}:
+            from .calibration_formats import CalibrationDatasetIO
+
+            return CalibrationDatasetIO.load(source)
+        raise ValueError("标定数据集仅支持 .json、.csv、.cdfx、.dcm 和 .par")
 
     def digest(self) -> str:
         payload = json.dumps(
@@ -422,10 +432,225 @@ class CalibrationDataset:
         return result, conflicts
 
 
+@dataclass(frozen=True, slots=True)
+class CalibrationIdentity:
+    """标定数据、描述文件与程序文件之间的可验证身份。"""
+
+    vehicle: str = ""
+    ecu: str = ""
+    software: str = ""
+    calibration: str = ""
+    a2l_sha256: str = ""
+    hex_sha256: str = ""
+
+    @staticmethod
+    def file_sha256(path: str | Path) -> str:
+        digest = hashlib.sha256()
+        with Path(path).expanduser().resolve().open("rb") as stream:
+            for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                digest.update(chunk)
+        return digest.hexdigest()
+
+    @classmethod
+    def from_assets(
+        cls,
+        *,
+        vehicle: str = "",
+        ecu: str = "",
+        software: str = "",
+        calibration: str = "",
+        a2l: str | Path | None = None,
+        hex_file: str | Path | None = None,
+    ) -> CalibrationIdentity:
+        return cls(
+            vehicle=vehicle,
+            ecu=ecu,
+            software=software,
+            calibration=calibration,
+            a2l_sha256=cls.file_sha256(a2l) if a2l else "",
+            hex_sha256=cls.file_sha256(hex_file) if hex_file else "",
+        )
+
+    def to_dict(self) -> dict[str, str]:
+        return {
+            key: value
+            for key, value in asdict(self).items()
+            if value
+        }
+
+    def bind(self, dataset: CalibrationDataset) -> CalibrationDataset:
+        result = CalibrationDataset.from_dict(dataset.to_dict())
+        result.identity.update(self.to_dict())
+        result.created_utc = _utc_now()
+        return result
+
+    @classmethod
+    def verify(
+        cls,
+        dataset: CalibrationDataset,
+        *,
+        a2l: str | Path | None = None,
+        hex_file: str | Path | None = None,
+        expected: Mapping[str, str] | None = None,
+    ) -> dict[str, Any]:
+        actual = dict(dataset.identity)
+        mismatches: dict[str, dict[str, str]] = {}
+        checks = dict(expected or {})
+        if a2l:
+            checks["a2l_sha256"] = cls.file_sha256(a2l)
+        if hex_file:
+            checks["hex_sha256"] = cls.file_sha256(hex_file)
+        for name, value in checks.items():
+            if actual.get(name, "") != value:
+                mismatches[name] = {
+                    "expected": value,
+                    "actual": actual.get(name, ""),
+                }
+        return {
+            "passed": not mismatches,
+            "identity": actual,
+            "mismatches": mismatches,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class ParameterConstraint:
+    name: str
+    minimum: float | None = None
+    maximum: float | None = None
+    monotonic: str = ""
+    maximum_gradient: float | None = None
+
+    def validate(self, dataset: CalibrationDataset) -> list[str]:
+        parameter = dataset.parameters.get(self.name)
+        if parameter is None:
+            return [f"约束引用了不存在的标定量：{self.name}"]
+        try:
+            values = _flatten_numeric(parameter.value)
+        except TypeError as exc:
+            return [str(exc)]
+        errors = []
+        for value in values:
+            if self.minimum is not None and value < self.minimum:
+                errors.append(f"{self.name}={value} 小于联动下限 {self.minimum}")
+            if self.maximum is not None and value > self.maximum:
+                errors.append(f"{self.name}={value} 大于联动上限 {self.maximum}")
+        if self.monotonic:
+            if self.monotonic not in {"increasing", "decreasing"}:
+                errors.append(f"{self.name} monotonic 必须是 increasing/decreasing")
+            else:
+                invalid = (
+                    any(right < left for left, right in zip(values, values[1:], strict=False))
+                    if self.monotonic == "increasing"
+                    else any(right > left for left, right in zip(values, values[1:], strict=False))
+                )
+                if invalid:
+                    errors.append(f"{self.name} 不满足 {self.monotonic} 单调约束")
+        if self.maximum_gradient is not None:
+            if self.maximum_gradient < 0:
+                errors.append(f"{self.name} maximum_gradient 不能为负数")
+            elif any(
+                abs(right - left) > self.maximum_gradient
+                for left, right in zip(values, values[1:], strict=False)
+            ):
+                errors.append(
+                    f"{self.name} 相邻值变化超过 {self.maximum_gradient}"
+                )
+        return errors
+
+
+@dataclass(frozen=True, slots=True)
+class RelationConstraint:
+    left: str
+    operator: str
+    right: str
+    factor: float = 1.0
+    offset: float = 0.0
+    tolerance: float = 1e-9
+
+    def validate(self, dataset: CalibrationDataset) -> list[str]:
+        missing = [name for name in (self.left, self.right) if name not in dataset.parameters]
+        if missing:
+            return [f"联动约束引用了不存在的标定量：{', '.join(missing)}"]
+        left_values = _flatten_numeric(dataset.parameters[self.left].value)
+        right_values = _flatten_numeric(dataset.parameters[self.right].value)
+        if len(left_values) != 1 or len(right_values) != 1:
+            return [f"{self.left}/{self.right} 联动关系当前仅支持标量"]
+        left = left_values[0]
+        right = self.factor * right_values[0] + self.offset
+        passed = {
+            "<": left < right + self.tolerance,
+            "<=": left <= right + self.tolerance,
+            "==": math.isclose(left, right, abs_tol=self.tolerance),
+            ">=": left >= right - self.tolerance,
+            ">": left > right - self.tolerance,
+        }.get(self.operator)
+        if passed is None:
+            return [f"不支持的联动运算符：{self.operator}"]
+        if passed:
+            return []
+        return [
+            f"联动约束失败：{self.left}({left}) {self.operator} "
+            f"{self.factor}*{self.right}+{self.offset}({right})"
+        ]
+
+
+@dataclass(slots=True)
+class CalibrationConstraintSet:
+    parameters: list[ParameterConstraint] = field(default_factory=list)
+    relations: list[RelationConstraint] = field(default_factory=list)
+
+    def validate(self, dataset: CalibrationDataset) -> list[str]:
+        errors = [
+            error
+            for constraint in (*self.parameters, *self.relations)
+            for error in constraint.validate(dataset)
+        ]
+        return errors
+
+    def require_valid(self, dataset: CalibrationDataset) -> None:
+        errors = self.validate(dataset)
+        if errors:
+            raise SafetyViolationError("; ".join(errors))
+
+
 class CalibrationRepository:
     def __init__(self, root: str | Path) -> None:
         self.root = Path(root).expanduser().resolve()
         self.root.mkdir(parents=True, exist_ok=True)
+        self._lock_path = self.root / ".repository.lock"
+
+    @contextmanager
+    def _lock(self, *, timeout: float = 10.0) -> Any:
+        deadline = time.monotonic() + timeout
+        while True:
+            try:
+                descriptor = os.open(
+                    self._lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY
+                )
+                os.write(
+                    descriptor,
+                    json.dumps({"pid": os.getpid(), "created_utc": _utc_now()}).encode(),
+                )
+                os.close(descriptor)
+                break
+            except (FileExistsError, PermissionError):
+                try:
+                    if (
+                        self._lock_path.exists()
+                        and time.time() - self._lock_path.stat().st_mtime > 60
+                    ):
+                        self._lock_path.unlink()
+                        continue
+                except (OSError, PermissionError):
+                    pass
+                if time.monotonic() >= deadline:
+                    raise TimeoutError("等待标定仓库写锁超时") from None
+                time.sleep(0.02)
+        try:
+            yield
+        finally:
+            self._lock_path.unlink(missing_ok=True)
 
     @staticmethod
     def _validate_version(version: str) -> str:
@@ -447,35 +672,37 @@ class CalibrationRepository:
     ) -> dict[str, Any]:
         version = self._validate_version(version)
         dataset.require_valid()
-        dataset_path = self.root / f"{version}.json"
-        if dataset_path.exists():
-            raise FileExistsError(f"标定版本已存在：{version}")
-        temporary_dataset = self.root / f".{version}.{os.getpid()}.tmp.json"
-        dataset.save(temporary_dataset)
-        record = {
-            "version": version,
-            "file": dataset_path.name,
-            "sha256": dataset.digest(),
-            "created_utc": _utc_now(),
-            "tags": sorted(set(tags)),
-            "note": note,
-            "identity": dict(dataset.identity),
-        }
-        manifest_path = self.root / "manifest.jsonl"
-        temporary_manifest = self.root / f".manifest.{os.getpid()}.tmp"
-        existing_manifest = (
-            manifest_path.read_text(encoding="utf-8") if manifest_path.exists() else ""
-        )
-        temporary_manifest.write_text(
-            existing_manifest + json.dumps(record, ensure_ascii=False) + "\n",
-            encoding="utf-8",
-        )
-        try:
-            temporary_dataset.replace(dataset_path)
-            temporary_manifest.replace(manifest_path)
-        finally:
-            temporary_dataset.unlink(missing_ok=True)
-            temporary_manifest.unlink(missing_ok=True)
+        token = f"{os.getpid()}.{time.time_ns()}"
+        with self._lock():
+            dataset_path = self.root / f"{version}.json"
+            if dataset_path.exists():
+                raise FileExistsError(f"标定版本已存在：{version}")
+            temporary_dataset = self.root / f".{version}.{token}.tmp.json"
+            dataset.save(temporary_dataset)
+            record = {
+                "version": version,
+                "file": dataset_path.name,
+                "sha256": dataset.digest(),
+                "created_utc": _utc_now(),
+                "tags": sorted(set(tags)),
+                "note": note,
+                "identity": dict(dataset.identity),
+            }
+            manifest_path = self.root / "manifest.jsonl"
+            temporary_manifest = self.root / f".manifest.{token}.tmp"
+            existing_manifest = (
+                manifest_path.read_text(encoding="utf-8") if manifest_path.exists() else ""
+            )
+            temporary_manifest.write_text(
+                existing_manifest + json.dumps(record, ensure_ascii=False) + "\n",
+                encoding="utf-8",
+            )
+            try:
+                temporary_dataset.replace(dataset_path)
+                temporary_manifest.replace(manifest_path)
+            finally:
+                temporary_dataset.unlink(missing_ok=True)
+                temporary_manifest.unlink(missing_ok=True)
         return record
 
     def load(self, version: str) -> CalibrationDataset:
@@ -499,11 +726,73 @@ class CalibrationRepository:
         manifest = self.root / "manifest.jsonl"
         if not manifest.exists():
             return []
-        return [
+        states = self._read_states()
+        records = [
             json.loads(line)
             for line in manifest.read_text(encoding="utf-8").splitlines()
             if line.strip()
         ]
+        for record in records:
+            state = states.get(str(record.get("version")), {})
+            record["frozen"] = bool(state.get("frozen"))
+            if state:
+                record["freeze"] = state
+        return records
+
+    def _read_states(self) -> dict[str, dict[str, Any]]:
+        path = self.root / "states.json"
+        return json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+
+    def freeze(self, version: str, *, actor: str, reason: str) -> dict[str, Any]:
+        version = self._validate_version(version)
+        if not actor.strip() or not reason.strip():
+            raise ValueError("冻结基线必须提供 actor 和 reason")
+        with self._lock():
+            versions = {item["version"] for item in self.list_versions()}
+            if version not in versions:
+                raise KeyError(f"标定版本未登记：{version}")
+            states = self._read_states()
+            existing = states.get(version)
+            if existing and existing.get("frozen"):
+                return existing
+            state = {
+                "frozen": True,
+                "actor": actor.strip(),
+                "reason": reason.strip(),
+                "frozen_utc": _utc_now(),
+            }
+            states[version] = state
+            temporary = self.root / f".states.{os.getpid()}.{time.time_ns()}.tmp"
+            temporary.write_text(
+                json.dumps(states, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
+            temporary.replace(self.root / "states.json")
+            return state
+
+    def verify_all(self) -> dict[str, Any]:
+        records = self.list_versions()
+        issues = []
+        registered = set()
+        for record in records:
+            version = str(record["version"])
+            registered.add(str(record["file"]))
+            try:
+                self.load(version)
+            except (OSError, ValueError, SafetyViolationError) as exc:
+                issues.append(f"{version}: {exc}")
+        orphan_files = sorted(
+            path.name
+            for path in self.root.glob("*.json")
+            if path.name != "states.json" and path.name not in registered
+        )
+        if orphan_files:
+            issues.append(f"未登记数据文件：{', '.join(orphan_files)}")
+        return {
+            "passed": not issues,
+            "version_count": len(records),
+            "issues": issues,
+            "orphan_files": orphan_files,
+        }
 
     def compare(self, left: str, right: str) -> dict[str, dict[str, Any]]:
         return self.load(left).diff(self.load(right))
@@ -545,6 +834,7 @@ class CalibrationPlan:
     name: str = "calibration-plan"
     author: str = ""
     ticket: str = ""
+    constraints: CalibrationConstraintSet | None = None
     approved_by: str = ""
     approved_utc: str = ""
 
@@ -575,6 +865,14 @@ class CalibrationPlan:
                     f"{change.name} 当前值与计划基线不一致："
                     f"{parameter.value!r} != {change.expected_before!r}"
                 )
+        if self.constraints and not any(
+            error.startswith("标定量不存在") for error in errors
+        ):
+            candidate_dataset = CalibrationDataset.from_dict(dataset.to_dict())
+            for change in self.changes:
+                if change.name in candidate_dataset.parameters:
+                    candidate_dataset.parameters[change.name].value = _json_value(change.value)
+            errors.extend(self.constraints.validate(candidate_dataset))
         return errors
 
     def preview(self, dataset: CalibrationDataset) -> dict[str, Any]:

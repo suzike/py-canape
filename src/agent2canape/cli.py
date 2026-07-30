@@ -157,6 +157,50 @@ def _asset_manifest(paths: list[str], output: str) -> int:
     return 0
 
 
+def _a2l_summary(path: str) -> int:
+    from .calibration_formats import A2LCatalog
+
+    result = A2LCatalog.parse(path).summary()
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0 if result["passed"] else 1
+
+
+def _calibration_convert(source: str, output: str) -> int:
+    from .calibration import CalibrationDataset
+
+    dataset = CalibrationDataset.load(source)
+    saved = dataset.save(output)
+    result = {
+        "status": "passed",
+        "source": str(Path(source).resolve()),
+        "output": str(saved),
+        "parameter_count": len(dataset.parameters),
+        "identity": dataset.identity,
+    }
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0
+
+
+def _calibration_verify(
+    dataset_path: str,
+    *,
+    a2l: str | None,
+    hex_file: str | None,
+    expected: str,
+) -> int:
+    from .calibration import CalibrationDataset, CalibrationIdentity
+
+    dataset = CalibrationDataset.load(dataset_path)
+    result = CalibrationIdentity.verify(
+        dataset,
+        a2l=a2l,
+        hex_file=hex_file,
+        expected=json.loads(expected),
+    )
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0 if result["passed"] else 1
+
+
 def _ai_toolkit(approval_file: str | None = None) -> CANapeAIToolkit:
     return CANapeAIToolkit(CANape(), approvals=ApprovalStore(approval_file))
 
@@ -241,6 +285,20 @@ def main(argv: list[str] | None = None) -> int:
     manifest = subparsers.add_parser("asset-manifest", help="生成工程资产哈希清单")
     manifest.add_argument("paths", nargs="+", type=str)
     manifest.add_argument("--output", required=True, type=str)
+    a2l_summary = subparsers.add_parser("a2l-summary", help="解析并校验 A2L 语义目录")
+    a2l_summary.add_argument("path", type=str)
+    calibration_convert = subparsers.add_parser(
+        "calibration-convert", help="转换 JSON/CSV/CDFX/DCM/PAR 标定数据集"
+    )
+    calibration_convert.add_argument("source", type=str)
+    calibration_convert.add_argument("output", type=str)
+    calibration_verify = subparsers.add_parser(
+        "calibration-verify", help="校验数据集与 A2L/HEX/软件标识的一致性"
+    )
+    calibration_verify.add_argument("dataset", type=str)
+    calibration_verify.add_argument("--a2l", type=str)
+    calibration_verify.add_argument("--hex", dest="hex_file", type=str)
+    calibration_verify.add_argument("--expected", default="{}", type=str)
     ai_tools = subparsers.add_parser("ai-tools", help="列出 AI/MCP 工具和 JSON Schema")
     ai_tools.add_argument("--approval-file", type=str)
     ai_plan = subparsers.add_parser("ai-plan", help="把自然语言请求转换为工程工具计划")
@@ -279,6 +337,17 @@ def main(argv: list[str] | None = None) -> int:
         )
     if args.command == "asset-manifest":
         return _asset_manifest(args.paths, args.output)
+    if args.command == "a2l-summary":
+        return _a2l_summary(args.path)
+    if args.command == "calibration-convert":
+        return _calibration_convert(args.source, args.output)
+    if args.command == "calibration-verify":
+        return _calibration_verify(
+            args.dataset,
+            a2l=args.a2l,
+            hex_file=args.hex_file,
+            expected=args.expected,
+        )
     if args.command == "ai-tools":
         return _ai_tools(args.approval_file)
     if args.command == "ai-plan":

@@ -104,9 +104,12 @@ class CANape:
                     str(getattr(self.application, "WorkingDirectory", ""))
                 )
             else:
-                import win32com.client
+                from win32com.client import dynamic
 
-                self.application = win32com.client.Dispatch(self.PROG_ID)
+                # Dispatch() 可能复用损坏的 gen_py 包装缓存，进而让 CANape
+                # Open2 返回 Invalid Asap3 Handle。DumbDispatch 强制使用
+                # IDispatch 晚绑定，与 CANape 补丁版本和类型库缓存解耦。
+                self.application = dynamic.DumbDispatch(self.PROG_ID)
             self._owns_application = True
             return True
         except Exception as exc:

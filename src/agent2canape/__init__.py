@@ -13,8 +13,10 @@ from .analysis import Finding, SignalAnalyzer
 from .assets import AssetManager, AssetRecord, PreflightResult
 from .calibration import (
     CalibrationChange,
+    CalibrationConstraintSet,
     CalibrationDataset,
     CalibrationExperiment,
+    CalibrationIdentity,
     CalibrationKind,
     CalibrationMath,
     CalibrationOptimizer,
@@ -22,7 +24,17 @@ from .calibration import (
     CalibrationPlan,
     CalibrationRepository,
     CalibrationSession,
+    ParameterConstraint,
+    RelationConstraint,
     SweepParameter,
+)
+from .calibration_formats import (
+    A2LAxisDescriptor,
+    A2LCatalog,
+    A2LCompuMethod,
+    A2LObject,
+    A2LRecordLayout,
+    CalibrationDatasetIO,
 )
 from .canape import CANape
 from .capabilities import Capability, CapabilityRegistry
@@ -71,7 +83,12 @@ __all__ = [
     "CalibrationKind",
     "CalibrationParameter",
     "CalibrationDataset",
+    "CalibrationDatasetIO",
     "CalibrationRepository",
+    "CalibrationIdentity",
+    "ParameterConstraint",
+    "RelationConstraint",
+    "CalibrationConstraintSet",
     "CalibrationChange",
     "CalibrationPlan",
     "CalibrationSession",
@@ -79,6 +96,11 @@ __all__ = [
     "CalibrationOptimizer",
     "CalibrationMath",
     "SweepParameter",
+    "A2LCatalog",
+    "A2LObject",
+    "A2LAxisDescriptor",
+    "A2LCompuMethod",
+    "A2LRecordLayout",
     "AssetManager",
     "AssetRecord",
     "PreflightResult",
@@ -122,4 +144,4 @@ __all__ = [
     "TaskInfo",
 ]
 
-__version__ = "3.0.0"
+__version__ = "3.1.0"
