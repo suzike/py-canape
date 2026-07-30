@@ -471,6 +471,8 @@ class ExperimentCaseRecord:
     attempts: int = 0
     started_utc: str = ""
     completed_utc: str = ""
+    quality: dict[str, Any] = field(default_factory=dict)
+    rejection_reasons: list[str] = field(default_factory=list)
 
 
 @dataclass(slots=True)
@@ -484,6 +486,7 @@ class CalibrationExperimentStore:
     lock_recoveries: list[dict[str, Any]] = field(default_factory=list)
     created_utc: str = field(default_factory=_utc_now)
     updated_utc: str = field(default_factory=_utc_now)
+    quality_summary: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
     def create(
@@ -515,11 +518,12 @@ class CalibrationExperimentStore:
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "schema_version": 1,
+            "schema_version": 2,
             "name": self.name,
             "device": self.device,
             "identity": self.identity,
             "baseline": _json_value(self.baseline),
+            "quality_summary": _json_value(self.quality_summary),
             "lock_recoveries": _json_value(self.lock_recoveries),
             "created_utc": self.created_utc,
             "updated_utc": self.updated_utc,
@@ -547,6 +551,7 @@ class CalibrationExperimentStore:
             device=str(data["device"]),
             identity=dict(data.get("identity", {})),
             baseline=dict(data.get("baseline", {})),
+            quality_summary=dict(data.get("quality_summary", {})),
             lock_recoveries=list(data.get("lock_recoveries", [])),
             created_utc=str(data.get("created_utc", _utc_now())),
             updated_utc=str(data.get("updated_utc", _utc_now())),
@@ -562,6 +567,11 @@ class CalibrationExperimentStore:
                     evidence=[
                         ExperimentEvidence(**evidence)
                         for evidence in case.get("evidence", [])
+                    ],
+                    quality=dict(case.get("quality", {})),
+                    rejection_reasons=[
+                        str(reason)
+                        for reason in case.get("rejection_reasons", [])
                     ],
                     error=str(case.get("error", "")),
                     attempts=int(case.get("attempts", 0)),
@@ -652,6 +662,14 @@ class CalibrationExperimentStore:
             "status_counts": counts,
             "completed": counts["passed"] + counts["rejected"],
             "invalid_evidence": invalid_evidence,
+            "rejected_cases": [
+                {
+                    "case": case.index,
+                    "reasons": list(case.rejection_reasons),
+                }
+                for case in self.cases
+                if case.status is ExperimentCaseStatus.REJECTED
+            ],
             "passed": (
                 not invalid_evidence
                 and counts["failed"] == 0
@@ -674,7 +692,21 @@ class CalibrationExperimentRunner:
         ) = None,
         retry_failed: bool = False,
         stop_on_error: bool = True,
+        quality_policy: Any | None = None,
+        stability_probe: (
+            Callable[
+                [int, Mapping[str, Any]],
+                Sequence[Mapping[str, float]],
+            ]
+            | None
+        ) = None,
     ) -> dict[str, Any]:
+        if (
+            quality_policy is not None
+            and quality_policy.requires_environment_samples
+            and stability_probe is None
+        ):
+            raise ValueError("质量策略包含稳态规则，必须提供 stability_probe")
         with store.claim():
             return CalibrationExperimentRunner._run_claimed(
                 backend,
@@ -683,6 +715,8 @@ class CalibrationExperimentRunner:
                 evidence_collector=evidence_collector,
                 retry_failed=retry_failed,
                 stop_on_error=stop_on_error,
+                quality_policy=quality_policy,
+                stability_probe=stability_probe,
             )
 
     @staticmethod
@@ -697,6 +731,14 @@ class CalibrationExperimentRunner:
         ),
         retry_failed: bool,
         stop_on_error: bool,
+        quality_policy: Any | None,
+        stability_probe: (
+            Callable[
+                [int, Mapping[str, Any]],
+                Sequence[Mapping[str, float]],
+            ]
+            | None
+        ),
     ) -> dict[str, Any]:
         names = sorted(
             {name for case in store.cases for name in case.parameters}
@@ -712,14 +754,32 @@ class CalibrationExperimentRunner:
         baseline = dict(store.baseline)
         completed_this_run = 0
         failures_this_run = 0
+        rejected_this_run = 0
+        outlier_results: list[dict[str, Any]] = []
         try:
             for case in store.pending(retry_failed=retry_failed):
                 case.status = ExperimentCaseStatus.RUNNING
                 case.attempts += 1
                 case.started_utc = _utc_now()
                 case.error = ""
+                case.metrics = {}
+                case.evidence = []
+                case.quality = {}
+                case.rejection_reasons = []
                 store.save()
                 try:
+                    if quality_policy is not None and stability_probe is not None:
+                        stability = quality_policy.evaluate_environment(
+                            stability_probe(case.index, case.parameters)
+                        )
+                        case.quality["stability"] = stability
+                        if not stability["passed"]:
+                            case.status = ExperimentCaseStatus.REJECTED
+                            case.rejection_reasons.extend(stability["issues"])
+                            case.completed_utc = _utc_now()
+                            completed_this_run += 1
+                            rejected_this_run += 1
+                            continue
                     for name, value in case.parameters.items():
                         backend.write_calibration_value(
                             store.device, name, value, verify=True
@@ -740,7 +800,17 @@ class CalibrationExperimentRunner:
                         ExperimentEvidence.from_file(path)
                         for path in evidence_paths
                     ]
-                    case.status = ExperimentCaseStatus.PASSED
+                    if quality_policy is not None:
+                        acceptance = quality_policy.evaluate_metrics(metrics)
+                        case.quality["metric_acceptance"] = acceptance
+                        if not acceptance["passed"]:
+                            case.status = ExperimentCaseStatus.REJECTED
+                            case.rejection_reasons.extend(acceptance["issues"])
+                            rejected_this_run += 1
+                        else:
+                            case.status = ExperimentCaseStatus.PASSED
+                    else:
+                        case.status = ExperimentCaseStatus.PASSED
                     case.completed_utc = _utc_now()
                     completed_this_run += 1
                 except Exception as exc:
@@ -756,6 +826,15 @@ class CalibrationExperimentRunner:
                             store.device, name, value, verify=True
                         )
                     store.save()
+            if quality_policy is not None:
+                outlier_results = quality_policy.apply_outliers(store.cases)
+                store.quality_summary["outliers"] = outlier_results
+                store.quality_summary["updated_utc"] = _utc_now()
+                rejected_this_run += sum(
+                    len(result["outlier_indices"])
+                    for result in outlier_results
+                )
+                store.save()
         finally:
             for name, value in baseline.items():
                 backend.write_calibration_value(
@@ -765,6 +844,8 @@ class CalibrationExperimentRunner:
             **store.summary(),
             "completed_this_run": completed_this_run,
             "failures_this_run": failures_this_run,
+            "rejected_this_run": rejected_this_run,
+            "outlier_results": outlier_results,
         }
 
 

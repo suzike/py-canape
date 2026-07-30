@@ -155,3 +155,6 @@ analysis = ParetoCalibrationAnalysis.analyze(
 
 `select_balanced()` 在 Pareto 前沿上按归一化理想点距离选择平衡候选。它是工程决策辅助，
 不是自动批准；最终候选仍应进入变更集评审和实车/台架验证。
+
+二维 MAP 邻域、项目物理模型、环境稳态、异常样本规则、实验报告和安全高斯过程推荐见
+[标定决策设计指南](./CALIBRATION_DESIGN.md)。

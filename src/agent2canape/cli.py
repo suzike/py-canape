@@ -236,6 +236,39 @@ def _calibration_persistence_status(path: str) -> int:
     return 0 if result["status"] == "completed" else 1
 
 
+def _calibration_experiment_report(path: str, output: str) -> int:
+    from .calibration_design import CalibrationExperimentReport
+    from .calibration_operations import CalibrationExperimentStore
+
+    store = CalibrationExperimentStore.load(path)
+    saved = CalibrationExperimentReport.save(store, output)
+    result = CalibrationExperimentReport.build(store)
+    print(
+        json.dumps(
+            {
+                "status": "passed",
+                "output": str(saved),
+                "summary": result["summary"],
+                "metrics": result["metrics"],
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+    )
+    return 0
+
+
+def _calibration_safe_suggest(path: str) -> int:
+    from .calibration_design import SafeBayesianCalibrationOptimizer
+
+    source = Path(path).expanduser().resolve()
+    result = SafeBayesianCalibrationOptimizer.suggest_from_spec(
+        json.loads(source.read_text(encoding="utf-8"))
+    )
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0 if result["passed"] else 1
+
+
 def _ai_toolkit(approval_file: str | None = None) -> CANapeAIToolkit:
     return CANapeAIToolkit(CANape(), approvals=ApprovalStore(approval_file))
 
@@ -352,6 +385,17 @@ def main(argv: list[str] | None = None) -> int:
         help="检查 Working→RAM→ROM 作业、掉线协调和补偿状态",
     )
     persistence_status.add_argument("path", type=str)
+    experiment_report = subparsers.add_parser(
+        "calibration-experiment-report",
+        help="生成含稳态、异常剔除和统计摘要的 JSON/Markdown 实验报告",
+    )
+    experiment_report.add_argument("path", type=str)
+    experiment_report.add_argument("--output", required=True, type=str)
+    safe_suggest = subparsers.add_parser(
+        "calibration-safe-suggest",
+        help="使用安全高斯过程代理模型推荐下一组标定候选",
+    )
+    safe_suggest.add_argument("spec", type=str)
     ai_tools = subparsers.add_parser("ai-tools", help="列出 AI/MCP 工具和 JSON Schema")
     ai_tools.add_argument("--approval-file", type=str)
     ai_plan = subparsers.add_parser("ai-plan", help="把自然语言请求转换为工程工具计划")
@@ -409,6 +453,10 @@ def main(argv: list[str] | None = None) -> int:
         return _calibration_experiment_status(args.path)
     if args.command == "calibration-persistence-status":
         return _calibration_persistence_status(args.path)
+    if args.command == "calibration-experiment-report":
+        return _calibration_experiment_report(args.path, args.output)
+    if args.command == "calibration-safe-suggest":
+        return _calibration_safe_suggest(args.spec)
     if args.command == "ai-tools":
         return _ai_tools(args.approval_file)
     if args.command == "ai-plan":

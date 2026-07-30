@@ -1,0 +1,76 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="540" viewBox="0 0 1200 540" role="img" aria-labelledby="title desc">
+  <title id="title">Agent2Canape 安全标定实验与代理优化闭环</title>
+  <desc id="desc">候选值先经过二维邻域和物理模型约束，再经过环境稳态门禁、实验测量、指标验收与异常剔除，最后生成报告并由安全高斯过程推荐下一候选。</desc>
+  <defs>
+    <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#071426"/>
+      <stop offset="1" stop-color="#12324b"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="8" stdDeviation="8" flood-color="#000" flood-opacity=".3"/>
+    </filter>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#67e8f9"/>
+    </marker>
+    <style>
+      .title{font:700 27px "Segoe UI","Microsoft YaHei",sans-serif;fill:#f8fafc}
+      .subtitle{font:400 15px "Segoe UI","Microsoft YaHei",sans-serif;fill:#a9c8dc}
+      .box{fill:#123654;stroke:#38bdf8;stroke-width:2;rx:18;filter:url(#shadow)}
+      .safe{fill:#173d43;stroke:#34d399;stroke-width:2;rx:18;filter:url(#shadow)}
+      .gate{fill:#402d3d;stroke:#fb7185;stroke-width:2;rx:18;filter:url(#shadow)}
+      .label{font:700 18px "Segoe UI","Microsoft YaHei",sans-serif;fill:#f8fafc;text-anchor:middle}
+      .small{font:400 13px "Segoe UI","Microsoft YaHei",sans-serif;fill:#c8dae7;text-anchor:middle}
+      .line{fill:none;stroke:#67e8f9;stroke-width:3;marker-end:url(#arrow)}
+      .reject{fill:none;stroke:#fb7185;stroke-width:2.5;stroke-dasharray:8 7;marker-end:url(#arrow)}
+    </style>
+  </defs>
+  <rect width="1200" height="540" rx="28" fill="url(#background)"/>
+  <text x="52" y="58" class="title">安全标定实验与代理优化闭环</text>
+  <text x="52" y="87" class="subtitle">先证明候选物理可行和环境稳定，再测量、剔除异常并推荐下一点</text>
+
+  <rect x="45" y="135" width="180" height="112" class="box"/>
+  <text x="135" y="177" class="label">候选数据集</text>
+  <text x="135" y="207" class="small">范围 · 单调 · 联动</text>
+  <text x="135" y="227" class="small">变更计划与审批</text>
+
+  <rect x="265" y="135" width="190" height="112" class="safe"/>
+  <text x="360" y="177" class="label">物理可行性</text>
+  <text x="360" y="207" class="small">MAP X/Y/对角邻域</text>
+  <text x="360" y="227" class="small">项目物理模型边界</text>
+
+  <rect x="495" y="135" width="180" height="112" class="gate"/>
+  <text x="585" y="177" class="label">环境稳态门禁</text>
+  <text x="585" y="207" class="small">样本数 · 波动 · 斜率</text>
+  <text x="585" y="227" class="small">温度/压力/电压范围</text>
+
+  <rect x="715" y="135" width="180" height="112" class="box"/>
+  <text x="805" y="177" class="label">DOE 测量</text>
+  <text x="805" y="207" class="small">写入 · 采集 · 证据</text>
+  <text x="805" y="227" class="small">每轮恢复基线</text>
+
+  <rect x="935" y="135" width="220" height="112" class="gate"/>
+  <text x="1045" y="177" class="label">质量接受判定</text>
+  <text x="1045" y="207" class="small">指标边界 · MAD/IQR/Z-score</text>
+  <text x="1045" y="227" class="small">拒绝原因不可丢失</text>
+
+  <path d="M225 191 H255" class="line"/>
+  <path d="M455 191 H485" class="line"/>
+  <path d="M675 191 H705" class="line"/>
+  <path d="M895 191 H925" class="line"/>
+
+  <rect x="200" y="350" width="260" height="120" class="safe"/>
+  <text x="330" y="391" class="label">可审计实验报告</text>
+  <text x="330" y="421" class="small">通过/拒绝/失败 · 统计摘要</text>
+  <text x="330" y="442" class="small">稳态结果 · 异常规则 · 证据哈希</text>
+
+  <rect x="650" y="350" width="330" height="120" class="safe"/>
+  <text x="815" y="391" class="label">安全高斯过程推荐</text>
+  <text x="815" y="421" class="small">RBF 代理模型 · 目标置信界</text>
+  <text x="815" y="442" class="small">安全置信界 · 外推距离 · 去重</text>
+
+  <path d="M1045 247 C1045 305 330 300 330 340" class="line"/>
+  <path d="M460 410 H640" class="line"/>
+  <path d="M815 350 C815 295 135 300 135 257" class="line"/>
+  <path d="M585 247 V315 H1045 V257" class="reject"/>
+  <text x="815" y="311" class="small">不稳定或不合格：拒绝并记录，不进入安全观测集</text>
+</svg>

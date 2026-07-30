@@ -595,15 +595,24 @@ class RelationConstraint:
         ]
 
 
+class CalibrationDatasetConstraint(Protocol):
+    def validate(self, dataset: CalibrationDataset) -> list[str]: ...
+
+
 @dataclass(slots=True)
 class CalibrationConstraintSet:
     parameters: list[ParameterConstraint] = field(default_factory=list)
     relations: list[RelationConstraint] = field(default_factory=list)
+    additional: list[CalibrationDatasetConstraint] = field(default_factory=list)
 
     def validate(self, dataset: CalibrationDataset) -> list[str]:
         errors = [
             error
-            for constraint in (*self.parameters, *self.relations)
+            for constraint in (
+                *self.parameters,
+                *self.relations,
+                *self.additional,
+            )
             for error in constraint.validate(dataset)
         ]
         return errors

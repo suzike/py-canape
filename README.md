@@ -9,7 +9,7 @@
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![CANape](https://img.shields.io/badge/CANape-17.x-0EA5E9)](#canape-17-兼容性)
 [![Capabilities](https://img.shields.io/badge/Capabilities-140%2F140-14B8A6)](./CAPABILITIES.md)
-[![Tests](https://img.shields.io/badge/Tests-98%20passed-22C55E)](#质量与验证)
+[![Tests](https://img.shields.io/badge/Tests-109%20passed-22C55E)](#质量与验证)
 [![License](https://img.shields.io/badge/License-MIT-F59E0B)](./LICENSE)
 
 **ECU 标定 · AI Agent · 在线测量 · 离线分析 · 安全门禁 · 工程闭环**
@@ -57,13 +57,15 @@ CANape 项目、ECU 在线状态、MDF/BLF 数据、A2L/DBC 数据库、标定�
 | A2L 语义 | 项目/模块、对象、地址、转换方法、记录布局、轴、单位和字节序 |
 | 版本管理 | 车辆/ECU/软件/A2L/HEX 身份绑定、并发提交、完整性巡检和基线冻结 |
 | 变更控制 | 变更计划、范围/梯度/单调/联动约束、审批、预览、事务提交 |
+| 物理约束 | MAP X/Y/对角邻域、轴向物理梯度和项目物理模型边界 |
 | 作业治理 | 功能组/页面/责任人变更集、职责分离、多人评审和结构化摘要 |
 | 存储状态 | Working/Reference/RAM/ROM 快照、差异、持久化门禁和审计历史 |
 | 目标执行 | 可插拔 ECU 适配协议、RAM/ROM 回读、跨进程锁和幂等作业日志 |
 | 标定实验 | 全因子、OFAT、Latin Hypercube、自动采集目标、每轮恢复基线 |
 | 实验恢复 | DOE 原子检查点、失败重试、中断恢复、指标和证据 SHA-256 |
+| 实验质量 | 环境稳态、指标验收、MAD/IQR/Z-score 异常剔除和统计报告 |
 | 多 ECU | RAM 屏障、ROM 分阶段提交、掉线协调及跨控制器逆序补偿 |
-| 优化 | 多指标加权、坐标搜索、Pareto 安全筛选和平衡候选 |
+| 优化 | 加权、坐标搜索、Pareto，以及安全高斯过程下一候选推荐 |
 | AI 驱动 | 自然语言规划、MCP 工具、参数摘要绑定、单次外部审批 |
 
 ```python
@@ -100,6 +102,8 @@ CDFX/DCM/PAR、A2L 语义目录、身份校验和并发版本基线详见
 [生产标定作业指南](./docs/CALIBRATION_OPERATIONS.md)。
 真实目标动作协议、RAM→ROM 和掉线恢复见
 [标定目标适配指南](./docs/CALIBRATION_TARGETS.md)。
+二维物理约束、DOE 质量和安全代理优化见
+[标定决策设计指南](./docs/CALIBRATION_DESIGN.md)。
 
 ## Codex / Claude Code 自然语言驱动
 
@@ -159,7 +163,7 @@ agent2canape capabilities
 | 模块 | 主要职责 |
 |---|---|
 | `CANape` | 会话、设备、测量、标定、记录器、网络、诊断和刷写 |
-| `Calibration*` | 数据交换、评审、存储层、目标适配、持久化、DOE、多 ECU 和 Pareto |
+| `Calibration*` | 数据交换、物理约束、DOE 质量、目标适配、多 ECU、Pareto 和安全代理优化 |
 | `CANapeAIToolkit` | AI 工具 Schema、自然语言计划、审批摘要和安全调度 |
 | `MCP Server` | Codex、Claude Code 等 Agent 的本地 stdio 接口 |
 | `AssetManager` | 环境预检、工程资产、版本清单、SHA-256、快照和恢复 |
@@ -332,7 +336,7 @@ CANape 的 vMDM 附属进程可能在 `Quit` 后继续驻留。若短时间内�
 
 ```text
 Ruff                    All checks passed
-Pytest                  98 passed
+Pytest                  109 passed
 Capability contracts    140 / 140, unique and resolvable
 Dependency check        No broken requirements
 MDF / BLF / DBC         Real file round-trip passed

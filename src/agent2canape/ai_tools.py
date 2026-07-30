@@ -352,6 +352,14 @@ class EngineeringCommandPlanner:
             "calibration_experiment_status",
         ),
         (
+            ("实验报告", "doe 报告", "experiment report"),
+            "calibration_experiment_report",
+        ),
+        (
+            ("推荐下一组标定", "安全优化候选", "safe calibration suggest"),
+            "calibration_safe_suggest",
+        ),
+        (
             ("pareto", "帕累托", "多目标候选"),
             "calibration_pareto_analyze",
         ),
@@ -547,6 +555,49 @@ class CANapeAIToolkit:
         from .calibration_targets import CalibrationPersistenceJob
 
         return CalibrationPersistenceJob.load(path).summary()
+
+    @staticmethod
+    def _calibration_experiment_report(path: str) -> dict[str, Any]:
+        from .calibration_design import CalibrationExperimentReport
+        from .calibration_operations import CalibrationExperimentStore
+
+        return CalibrationExperimentReport.build(
+            CalibrationExperimentStore.load(path)
+        )
+
+    @staticmethod
+    def _calibration_safe_suggest(
+        observations: list[dict[str, Any]],
+        candidates: list[dict[str, Any]],
+        bounds: dict[str, list[float]],
+        objective: str,
+        direction: str = "minimize",
+        safety_limits: dict[str, list[float | None]] | None = None,
+        length_scale: float = 0.35,
+        observation_noise: float = 1e-6,
+        exploration_weight: float = 1.0,
+        safety_sigma: float = 2.0,
+        max_extrapolation_distance: float = 0.75,
+        limit: int = 10,
+    ) -> dict[str, Any]:
+        from .calibration_design import SafeBayesianCalibrationOptimizer
+
+        return SafeBayesianCalibrationOptimizer.suggest_from_spec(
+            {
+                "observations": observations,
+                "candidates": candidates,
+                "bounds": bounds,
+                "objective": objective,
+                "direction": direction,
+                "safety_limits": safety_limits or {},
+                "length_scale": length_scale,
+                "observation_noise": observation_noise,
+                "exploration_weight": exploration_weight,
+                "safety_sigma": safety_sigma,
+                "max_extrapolation_distance": max_extrapolation_distance,
+                "limit": limit,
+            }
+        )
 
     @staticmethod
     def _calibration_pareto_analyze(
@@ -854,6 +905,41 @@ class CANapeAIToolkit:
                 _schema({"path": "string"}, required=("path",)),
                 ToolRisk.READ_ONLY,
                 self._calibration_persistence_status,
+            ),
+            AIToolSpec(
+                "calibration_experiment_report",
+                "汇总 DOE 稳态门禁、指标验收、异常剔除、证据和统计结果。",
+                _schema({"path": "string"}, required=("path",)),
+                ToolRisk.READ_ONLY,
+                self._calibration_experiment_report,
+            ),
+            AIToolSpec(
+                "calibration_safe_suggest",
+                "用安全高斯过程代理模型和置信边界推荐下一组标定候选。",
+                _schema(
+                    {
+                        "observations": "array",
+                        "candidates": "array",
+                        "bounds": "object",
+                        "objective": "string",
+                        "direction": "string",
+                        "safety_limits": "object",
+                        "length_scale": "number",
+                        "observation_noise": "number",
+                        "exploration_weight": "number",
+                        "safety_sigma": "number",
+                        "max_extrapolation_distance": "number",
+                        "limit": "integer",
+                    },
+                    required=(
+                        "observations",
+                        "candidates",
+                        "bounds",
+                        "objective",
+                    ),
+                ),
+                ToolRisk.READ_ONLY,
+                self._calibration_safe_suggest,
             ),
             AIToolSpec(
                 "calibration_pareto_analyze",

@@ -9,10 +9,12 @@ from agent2canape import (
     ApprovalStore,
     CalibrationChangeItem,
     CalibrationChangeSet,
+    CalibrationExperimentStore,
     CalibrationKind,
     CalibrationParameter,
     CalibrationPersistenceJob,
     CANapeAIToolkit,
+    ExperimentCaseStatus,
     PersistenceStatus,
     SafetyViolationError,
 )
@@ -329,6 +331,55 @@ class AIToolTests(unittest.TestCase):
         self.assertEqual(
             persistence_plan["tool"], "calibration_persistence_status"
         )
+
+    def test_ai_tools_expose_experiment_report_and_safe_suggestion(self):
+        store = CalibrationExperimentStore.create(
+            Path(self.temporary.name) / "experiment.json",
+            name="ai-experiment",
+            device="VCU",
+            cases=[{"Gain": 1.0}],
+        )
+        store.cases[0].status = ExperimentCaseStatus.PASSED
+        store.cases[0].metrics = {"score": 1.0}
+        store.save()
+        report = self.toolkit.registry.invoke(
+            "calibration_experiment_report", {"path": str(store.path)}
+        )
+        self.assertEqual(report["result"]["metrics"]["score"]["count"], 1)
+
+        suggestion = self.toolkit.registry.invoke(
+            "calibration_safe_suggest",
+            {
+                "observations": [
+                    {
+                        "identifier": "A",
+                        "parameters": {"gain": 0.0},
+                        "metrics": {"error": 1.0},
+                    },
+                    {
+                        "identifier": "B",
+                        "parameters": {"gain": 1.0},
+                        "metrics": {"error": 0.2},
+                    },
+                ],
+                "candidates": [{"identifier": "C", "gain": 0.5}],
+                "bounds": {"gain": [0.0, 1.0]},
+                "objective": "error",
+            },
+        )
+        self.assertEqual(
+            suggestion["result"]["suggested"]["identifier"], "C"
+        )
+        plan = self.toolkit.planner.plan(
+            "推荐下一组标定",
+            context={
+                "observations": [],
+                "candidates": [],
+                "bounds": {},
+                "objective": "error",
+            },
+        )
+        self.assertEqual(plan["tool"], "calibration_safe_suggest")
 
 
 if __name__ == "__main__":

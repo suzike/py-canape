@@ -41,6 +41,7 @@ Workflow Engine ---- Safety Policy ---- Audit Trail
 
 - `canape.py`：在线会话、设备、测量、标定、诊断、刷写和网络；
 - `calibration.py`：标定对象、数据集、版本、变更事务、实验设计和优化；
+- `calibration_design.py`：二维/物理模型约束、DOE 质量、实验报告和安全高斯过程；
 - `calibration_formats.py`：A2L 语义目录和 CDFX/DCM/PAR 标定数据交换；
 - `calibration_operations.py`：变更评审、存储层台账、DOE 恢复、多 ECU 事务和 Pareto；
 - `calibration_targets.py`：目标适配协议、RAM/ROM 持久化、掉线协调和分阶段多 ECU 补偿；
@@ -66,6 +67,9 @@ Workflow Engine ---- Safety Policy ---- Audit Trail
 | 工作流未授权写入 | 默认拒绝 `write=True` 动作，需显式 `allow_writes=True` |
 | AI 参数被篡改或重复执行 | SHA-256 绑定工具与参数，原子认领，计划只使用一次 |
 | 曲线/MAP 轴或维度错误 | 写入前校验轴递增、矩阵形状和上下限 |
+| MAP 局部尖峰或物理模型越界 | X/Y/对角邻域及项目派生指标在候选阶段拒绝 |
+| DOE 环境未稳态或样本异常 | 写前稳态门禁、指标验收和队列级稳健异常判定 |
+| 代理优化探索到未知危险区域 | 安全指标置信界、外推距离和已观测候选去重 |
 | 写操作完成但响应前掉线 | 重连后回读目标层，协调已生效动作，不盲目重复写入 |
 | 多 ECU ROM 阶段失败 | RAM 屏障、ROM 分阶段提交和跨设备逆序补偿 |
 | 报告生成失败 | 保留原始 JSON 审计和证据文件 |

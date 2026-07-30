@@ -15,6 +15,7 @@ from .calibration import (
     CalibrationChange,
     CalibrationConstraintSet,
     CalibrationDataset,
+    CalibrationDatasetConstraint,
     CalibrationExperiment,
     CalibrationIdentity,
     CalibrationKind,
@@ -27,6 +28,17 @@ from .calibration import (
     ParameterConstraint,
     RelationConstraint,
     SweepParameter,
+)
+from .calibration_design import (
+    CalibrationExperimentReport,
+    CalibrationObservation,
+    ExperimentQualityPolicy,
+    MapNeighborhoodConstraint,
+    MetricAcceptanceRule,
+    OutlierRule,
+    PhysicalModelConstraint,
+    SafeBayesianCalibrationOptimizer,
+    SteadyStateRule,
 )
 from .calibration_formats import (
     A2LAxisDescriptor,
@@ -118,6 +130,16 @@ __all__ = [
     "ParameterConstraint",
     "RelationConstraint",
     "CalibrationConstraintSet",
+    "CalibrationDatasetConstraint",
+    "MapNeighborhoodConstraint",
+    "PhysicalModelConstraint",
+    "SteadyStateRule",
+    "MetricAcceptanceRule",
+    "OutlierRule",
+    "ExperimentQualityPolicy",
+    "CalibrationExperimentReport",
+    "CalibrationObservation",
+    "SafeBayesianCalibrationOptimizer",
     "CalibrationChange",
     "CalibrationPlan",
     "CalibrationSession",
@@ -198,4 +220,4 @@ __all__ = [
     "TaskInfo",
 ]
 
-__version__ = "3.3.0"
+__version__ = "3.4.0"
