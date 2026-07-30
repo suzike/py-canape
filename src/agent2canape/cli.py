@@ -228,6 +228,14 @@ def _calibration_experiment_status(path: str) -> int:
     return 0 if result["passed"] else 1
 
 
+def _calibration_persistence_status(path: str) -> int:
+    from .calibration_targets import CalibrationPersistenceJob
+
+    result = CalibrationPersistenceJob.load(path).summary()
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0 if result["status"] == "completed" else 1
+
+
 def _ai_toolkit(approval_file: str | None = None) -> CANapeAIToolkit:
     return CANapeAIToolkit(CANape(), approvals=ApprovalStore(approval_file))
 
@@ -339,6 +347,11 @@ def main(argv: list[str] | None = None) -> int:
         "calibration-experiment-status", help="检查 DOE 断点、结果和证据完整性"
     )
     experiment_status.add_argument("path", type=str)
+    persistence_status = subparsers.add_parser(
+        "calibration-persistence-status",
+        help="检查 Working→RAM→ROM 作业、掉线协调和补偿状态",
+    )
+    persistence_status.add_argument("path", type=str)
     ai_tools = subparsers.add_parser("ai-tools", help="列出 AI/MCP 工具和 JSON Schema")
     ai_tools.add_argument("--approval-file", type=str)
     ai_plan = subparsers.add_parser("ai-plan", help="把自然语言请求转换为工程工具计划")
@@ -394,6 +407,8 @@ def main(argv: list[str] | None = None) -> int:
         return _calibration_memory_status(args.path)
     if args.command == "calibration-experiment-status":
         return _calibration_experiment_status(args.path)
+    if args.command == "calibration-persistence-status":
+        return _calibration_persistence_status(args.path)
     if args.command == "ai-tools":
         return _ai_tools(args.approval_file)
     if args.command == "ai-plan":

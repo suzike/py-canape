@@ -344,6 +344,10 @@ class EngineeringCommandPlanner:
             "calibration_memory_status",
         ),
         (
+            ("持久化作业", "持久化状态", "persistence job"),
+            "calibration_persistence_status",
+        ),
+        (
             ("doe 状态", "实验状态", "experiment status"),
             "calibration_experiment_status",
         ),
@@ -537,6 +541,12 @@ class CANapeAIToolkit:
         from .calibration_operations import CalibrationExperimentStore
 
         return CalibrationExperimentStore.load(path).summary()
+
+    @staticmethod
+    def _calibration_persistence_status(path: str) -> dict[str, Any]:
+        from .calibration_targets import CalibrationPersistenceJob
+
+        return CalibrationPersistenceJob.load(path).summary()
 
     @staticmethod
     def _calibration_pareto_analyze(
@@ -837,6 +847,13 @@ class CANapeAIToolkit:
                 _schema({"path": "string"}, required=("path",)),
                 ToolRisk.READ_ONLY,
                 self._calibration_experiment_status,
+            ),
+            AIToolSpec(
+                "calibration_persistence_status",
+                "读取 Working→RAM→ROM 作业、掉线协调和补偿恢复状态。",
+                _schema({"path": "string"}, required=("path",)),
+                ToolRisk.READ_ONLY,
+                self._calibration_persistence_status,
             ),
             AIToolSpec(
                 "calibration_pareto_analyze",

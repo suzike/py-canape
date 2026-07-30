@@ -55,6 +55,16 @@ from .calibration_operations import (
     ParetoCalibrationAnalysis,
     ReviewDecision,
 )
+from .calibration_targets import (
+    CalibrationPersistenceCoordinator,
+    CalibrationPersistenceJob,
+    CalibrationTargetAdapter,
+    CANapeCalibrationTarget,
+    InMemoryCalibrationTarget,
+    PersistenceStatus,
+    StagedECUPersistenceTask,
+    StagedMultiECUPersistenceCoordinator,
+)
 from .canape import CANape
 from .capabilities import Capability, CapabilityRegistry
 from .errors import (
@@ -137,6 +147,14 @@ __all__ = [
     "CalibrationObjective",
     "CalibrationCandidate",
     "ParetoCalibrationAnalysis",
+    "CalibrationTargetAdapter",
+    "CANapeCalibrationTarget",
+    "InMemoryCalibrationTarget",
+    "PersistenceStatus",
+    "CalibrationPersistenceJob",
+    "CalibrationPersistenceCoordinator",
+    "StagedECUPersistenceTask",
+    "StagedMultiECUPersistenceCoordinator",
     "AssetManager",
     "AssetRecord",
     "PreflightResult",
@@ -180,4 +198,4 @@ __all__ = [
     "TaskInfo",
 ]
 
-__version__ = "3.2.0"
+__version__ = "3.3.0"

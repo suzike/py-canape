@@ -26,6 +26,7 @@ class MCPServerTests(unittest.TestCase):
         self.assertIn("agent2canape_calibration_read", names)
         self.assertIn("agent2canape_calibration_write", names)
         self.assertIn("agent2canape_calibration_change_set_status", names)
+        self.assertIn("agent2canape_calibration_persistence_status", names)
         self.assertIn("agent2canape_calibration_pareto_analyze", names)
         self.assertIn("agent2canape_flash_start", names)
         self.assertGreaterEqual(len(names), 25)

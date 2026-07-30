@@ -11,7 +11,9 @@ from agent2canape import (
     CalibrationChangeSet,
     CalibrationKind,
     CalibrationParameter,
+    CalibrationPersistenceJob,
     CANapeAIToolkit,
+    PersistenceStatus,
     SafetyViolationError,
 )
 
@@ -304,6 +306,29 @@ class AIToolTests(unittest.TestCase):
             "查看标定评审", context={"path": str(path)}
         )
         self.assertEqual(planned["tool"], "calibration_change_set_status")
+
+        persistence_path = Path(self.temporary.name) / "persistence.json"
+        CalibrationPersistenceJob(
+            job_id="CAL-42",
+            device="VCU",
+            actor="calibrator",
+            approved_by="reviewer",
+            working_digest="abc",
+            persist_rom=True,
+            status=PersistenceStatus.COMPLETED,
+        ).save(persistence_path)
+        persistence = self.toolkit.registry.invoke(
+            "calibration_persistence_status",
+            {"path": str(persistence_path)},
+        )
+        self.assertEqual(persistence["result"]["status"], "completed")
+        persistence_plan = self.toolkit.planner.plan(
+            "查看持久化作业",
+            context={"path": str(persistence_path)},
+        )
+        self.assertEqual(
+            persistence_plan["tool"], "calibration_persistence_status"
+        )
 
 
 if __name__ == "__main__":

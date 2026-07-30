@@ -43,6 +43,7 @@ Workflow Engine ---- Safety Policy ---- Audit Trail
 - `calibration.py`：标定对象、数据集、版本、变更事务、实验设计和优化；
 - `calibration_formats.py`：A2L 语义目录和 CDFX/DCM/PAR 标定数据交换；
 - `calibration_operations.py`：变更评审、存储层台账、DOE 恢复、多 ECU 事务和 Pareto；
+- `calibration_targets.py`：目标适配协议、RAM/ROM 持久化、掉线协调和分阶段多 ECU 补偿；
 - `ai_tools.py`：AI 工具 Schema、自然语言计划、跨进程审批和安全调度；
 - `mcp_server.py`：Codex、Claude Code 等客户端使用的本地 stdio MCP Server；
 - `assets.py`：环境清单、工程资产、版本哈希、预检、快照和恢复；
@@ -65,5 +66,7 @@ Workflow Engine ---- Safety Policy ---- Audit Trail
 | 工作流未授权写入 | 默认拒绝 `write=True` 动作，需显式 `allow_writes=True` |
 | AI 参数被篡改或重复执行 | SHA-256 绑定工具与参数，原子认领，计划只使用一次 |
 | 曲线/MAP 轴或维度错误 | 写入前校验轴递增、矩阵形状和上下限 |
+| 写操作完成但响应前掉线 | 重连后回读目标层，协调已生效动作，不盲目重复写入 |
+| 多 ECU ROM 阶段失败 | RAM 屏障、ROM 分阶段提交和跨设备逆序补偿 |
 | 报告生成失败 | 保留原始 JSON 审计和证据文件 |
 | 企业系统不可用 | 外部适配器失败不影响本地证据包 |
