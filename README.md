@@ -9,7 +9,7 @@
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![CANape](https://img.shields.io/badge/CANape-17.x-0EA5E9)](#canape-17-兼容性)
 [![Capabilities](https://img.shields.io/badge/Capabilities-140%2F140-14B8A6)](./CAPABILITIES.md)
-[![Tests](https://img.shields.io/badge/Tests-184%20passed-22C55E)](#质量与验证)
+[![Tests](https://img.shields.io/badge/Tests-185%20passed-22C55E)](#质量与验证)
 [![License](https://img.shields.io/badge/License-MIT-F59E0B)](./LICENSE)
 
 **ECU 标定 · AI Agent · 在线测量 · 离线分析 · 安全门禁 · 工程闭环**
@@ -180,6 +180,13 @@ agent2canape diagnostic-dtc-decode `
 
 AI/MCP 执行诊断序列属于 `DIAGNOSTIC` 风险，仍需外部审批。NRC `0x78` 只进入 P2*
 证据，不会触发对非幂等请求的自动重发。详见[UDS 诊断工程指南](./docs/DIAGNOSTIC_ENGINEERING.md)。
+
+### 具体全链路案例
+
+`examples/hvac_comfort_full_case.py` 以“空调降温慢且存在历史 DTC”为案例，贯通身份、资产、
+拓扑、测量预算/故障回滚、标定审批、AI Action Plan、UDS、DTC、信号分析、工作流和证据包。
+危险动作使用模拟 ECU；可选参数可叠加真实 CANape 只读门禁。详见
+[空调舒适性全链路验收](./docs/FULL_CASE_ACCEPTANCE.md)。
 
 ## Codex / Claude Code 自然语言驱动
 
@@ -438,7 +445,7 @@ CANape 的 vMDM 附属进程可能在 `Quit` 后继续驻留。若短时间内�
 
 ```text
 Ruff                    All checks passed
-Pytest                  184 passed
+Pytest                  185 passed
 Capability contracts    140 / 140, unique and resolvable
 Dependency check        No broken requirements
 MDF / BLF / DBC         Real file round-trip passed

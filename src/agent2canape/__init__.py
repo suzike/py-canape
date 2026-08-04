@@ -1,6 +1,6 @@
 """Vector CANape 的 Python COM 控制接口。"""
 
-__version__ = "3.11.0"
+__version__ = "3.11.1"
 
 from .ai_tools import (
     AIActionPlan,
