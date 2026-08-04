@@ -9,7 +9,7 @@
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![CANape](https://img.shields.io/badge/CANape-17.x-0EA5E9)](#canape-17-兼容性)
 [![Capabilities](https://img.shields.io/badge/Capabilities-140%2F140-14B8A6)](./CAPABILITIES.md)
-[![Tests](https://img.shields.io/badge/Tests-171%20passed-22C55E)](#质量与验证)
+[![Tests](https://img.shields.io/badge/Tests-184%20passed-22C55E)](#质量与验证)
 [![License](https://img.shields.io/badge/License-MIT-F59E0B)](./LICENSE)
 
 **ECU 标定 · AI Agent · 在线测量 · 离线分析 · 安全门禁 · 工程闭环**
@@ -42,6 +42,7 @@ CANape 项目、ECU 在线状态、MDF/BLF 数据、A2L/DBC 数据库、标定�
 | 专业扩展成本高 | 动力、底盘、车身、三电、热管理、ADAS 领域插件 |
 | AI 只能给建议 | 本地 MCP、结构化 Schema、外部审批和自然语言工程计划 |
 | 测量配置易漂移 | 版本化清单、DAQ/FIFO 预算、事务回滚、重连恢复和 MDF 验收 |
+| 诊断步骤易失控 | UDS 清单、状态门禁、NRC 解释、Tester Present 和 DTC 快照 |
 
 <img src="./docs/assets/engineering-loop.svg" alt="整车问题排查工程闭环" width="100%">
 
@@ -163,6 +164,23 @@ agent2canape network-topology-audit D:\VehicleProject `
 CANape 1.9 COM 网络对象只可靠提供名称和激活态，总线类型与波特率来自受控清单，不会被
 描述成 COM 实测字段。详见[网络拓扑审计指南](./docs/NETWORK_TOPOLOGY.md)。
 
+### UDS 诊断工程
+
+<img src="./docs/assets/diagnostic-engineering-loop.svg" alt="UDS 诊断工程闭环" width="100%">
+
+诊断清单把原始或命名服务、ECU、P2/P2*、会话、安全等级、允许 NRC 和状态迁移形成
+受控基线。执行前先做状态门禁，执行后保留原始响应、NRC 分类、最终状态和证据摘要；
+Tester Present 无论成功或失败都会尝试停止。
+
+```powershell
+agent2canape diagnostic-plan examples\diagnostic_sequence.yaml
+agent2canape diagnostic-dtc-decode `
+  0x59 0x02 0xFF 0x12 0x34 0x56 0x09 --source pre-calibration
+```
+
+AI/MCP 执行诊断序列属于 `DIAGNOSTIC` 风险，仍需外部审批。NRC `0x78` 只进入 P2*
+证据，不会触发对非幂等请求的自动重发。详见[UDS 诊断工程指南](./docs/DIAGNOSTIC_ENGINEERING.md)。
+
 ## Codex / Claude Code 自然语言驱动
 
 <img src="./docs/assets/ai-calibration-loop.svg" alt="AI 驱动 ECU 标定闭环" width="100%">
@@ -241,6 +259,7 @@ agent2canape capabilities
 | `CANape` | 会话、设备、测量、标定、记录器、网络、诊断和刷写 |
 | `Measurement*` | 测量清单、DAQ/FIFO 预算、事务恢复、MDF 验收和有界在线流式窗口 |
 | `Topology*` | 网络/设备/通道/数据库清单、资产语义、实时快照和漂移审计 |
+| `Diagnostic*` | UDS 清单、NRC 语义、会话/安全状态、Tester Present 和 DTC 快照 |
 | `Calibration*` | 数据交换、物理约束、DOE 质量、目标适配、多 ECU、Pareto 和安全代理优化 |
 | `CANapeAIToolkit` | AI 工具 Schema、自然语言计划、审批摘要和安全调度 |
 | `MCP Server` | stdio 接口、会话限流、CANape 资源租约、摘要审计和运行状态 |
@@ -419,11 +438,11 @@ CANape 的 vMDM 附属进程可能在 `Quit` 后继续驻留。若短时间内�
 
 ```text
 Ruff                    All checks passed
-Pytest                  171 passed
+Pytest                  184 passed
 Capability contracts    140 / 140, unique and resolvable
 Dependency check        No broken requirements
 MDF / BLF / DBC         Real file round-trip passed
-MCP                     43 tools, discovery, approval, runtime governance and audit passed
+MCP                     46 tools, discovery, approval, runtime governance and audit passed
 MCP clients             Codex model call + CANape read-only project call passed
 Workflow                Validate + Dry-run passed
 ```

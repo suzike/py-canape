@@ -260,6 +260,9 @@ A2L 文本枚举会以“显示标签→原始值”的受控方式参与规划�
 采集 10000 个样本到可恢复 JSONL 分卷证据
 规划 CAN/LIN/FlexRay/Ethernet 网络拓扑和数据库基线
 审计当前 CANape 设备通道与 DBC/A2L 是否匹配
+规划 examples/diagnostic_sequence.yaml 的 UDS 会话、超时和 NRC 策略
+执行 examples/diagnostic_sequence.yaml 的诊断序列
+离线解析 59 02 FF 12 34 56 09 DTC 响应
 向 GW 发送诊断请求 22 F1 90
 ```
 
@@ -305,12 +308,12 @@ Latin Hypercube 和坐标搜索可用于台架标定，每次实验后都会恢�
 
 | 风险等级 | 典型工具 | 执行条件 |
 |---|---|---|
-| `READ_ONLY` | 标定读取、测量/订阅规划、拓扑审计、在线快照、MDF 验收 | 可直接执行；实时拓扑审计占用 CANape 租约 |
+| `READ_ONLY` | 标定读取、测量/订阅规划、拓扑审计、诊断规划/DTC 解码、MDF 验收 | 可直接执行；实时拓扑审计占用 CANape 租约 |
 | `PROJECT_CONTROL` | 打开项目、设备上下线、网络配置、流式证据采集 | 外部审批；流式采集绑定测量配置和通道清单 |
 | `MEASUREMENT_CONTROL` | 启停测量、应用测量清单、重连恢复 | 外部审批、实时快照绑定、失败回滚 |
 | `CALIBRATION_WRITE` | 标定量/曲线/MAP/数据集写入 | 外部审批、范围校验、回读 |
 | `MEMORY_WRITE` | ECU 内存写入 | 外部审批、回读 |
-| `DIAGNOSTIC` | 命名或原始诊断、Tester Present | 外部审批 |
+| `DIAGNOSTIC` | 命名/原始诊断、受控诊断序列、Tester Present | 外部审批；序列执行占用 CANape 租约 |
 | `FLASH` | 启停刷写 | 最高风险、外部审批 |
 
 本工具包不会为 AI 暴露“自我审批”工具，也不会自动绕过车辆、台架、企业安全策略或

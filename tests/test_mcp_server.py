@@ -50,6 +50,9 @@ class MCPServerTests(unittest.TestCase):
         self.assertIn("agent2canape_calibration_safe_suggest", names)
         self.assertIn("agent2canape_calibration_pareto_analyze", names)
         self.assertIn("agent2canape_flash_start", names)
+        self.assertIn("agent2canape_diagnostic_sequence_plan", names)
+        self.assertIn("agent2canape_diagnostic_sequence_execute", names)
+        self.assertIn("agent2canape_diagnostic_dtc_decode", names)
         self.assertGreaterEqual(len(names), 25)
         calibration_write = next(
             tool for tool in tools if tool.name == "agent2canape_calibration_write"

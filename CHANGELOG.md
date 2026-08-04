@@ -1,5 +1,19 @@
 # 变更记录
 
+## 3.11.0 - 2026-08-04
+
+- 新增版本化 UDS 诊断清单，描述原始/命名请求、ECU、P2/P2*、期望响应、允许 NRC、
+  会话/安全等级前置条件和成功状态迁移；
+- 新增常用 NRC 名称、工程分类、可重试属性和处置建议，明确 `0x78 ResponsePending`
+  不会导致非幂等诊断请求自动重发；
+- 新增 `DiagnosticSequenceRunner`，在发送前执行状态门禁，并保证 Tester Present 在成功、
+  失败或异常路径上进入清理流程；
+- 新增 UDS 正负响应语义解析、请求/响应服务 ID 一致性检查和稳定证据摘要；
+- 新增 `DTCSnapshot`，解析 `0x59` 响应并比较新增、消失和状态变化的 DTC；
+- CLI 新增 `diagnostic-plan` 和 `diagnostic-dtc-decode`；
+- AI/MCP 新增诊断序列规划、受审批执行和离线 DTC 解析三个工具，当前共 46 个工具；
+- 新增 UDS 清单示例、工程指南和非 Mermaid SVG 配图，累计 184 项自动化测试。
+
 ## 3.10.0 - 2026-08-04
 
 - 新增网络拓扑清单，统一描述 CAN/CAN FD/LIN/FlexRay/Ethernet 网络、ECU、通道、驱动、

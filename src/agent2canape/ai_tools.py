@@ -16,6 +16,7 @@ from enum import IntEnum
 from pathlib import Path
 from typing import Any
 
+from .diagnostics import DiagnosticManifest, DiagnosticSequenceRunner, DTCSnapshot
 from .engineering_context import EngineeringContextResolver
 from .errors import SafetyViolationError
 from .measurement import (
@@ -507,6 +508,15 @@ class EngineeringCommandPlanner:
         (("写入内存", "write memory"), "memory_write"),
         (("诊断请求", "diagnostic request"), "diagnostic_raw"),
         (("诊断服务", "named diagnostic"), "diagnostic_named"),
+        (
+            ("诊断序列规划", "uds 清单规划", "diagnostic sequence plan"),
+            "diagnostic_sequence_plan",
+        ),
+        (
+            ("执行诊断序列", "执行 uds 清单", "execute diagnostic sequence"),
+            "diagnostic_sequence_execute",
+        ),
+        (("解析 dtc", "dtc 快照", "decode dtc"), "diagnostic_dtc_decode"),
         (("tester present", "诊断保活"), "tester_present"),
         (("刷写", "flash ecu"), "flash_start"),
         (("刷写状态", "flash status"), "flash_state"),
@@ -1169,6 +1179,38 @@ class CANapeAIToolkit:
             "status": self.canape.set_tester_present(device, enabled=enabled),
         }
 
+    @staticmethod
+    def _diagnostic_sequence_plan(manifest_file: str) -> dict[str, Any]:
+        return DiagnosticManifest.load(manifest_file).plan()
+
+    @staticmethod
+    def _diagnostic_sequence_execute_preview(manifest_file: str) -> dict[str, Any]:
+        manifest = DiagnosticManifest.load(manifest_file)
+        plan = manifest.plan()
+        return {
+            **plan,
+            "operation": "execute_diagnostic_sequence",
+            "precondition_digest": manifest.digest(),
+            "effects": [
+                "发送清单定义的 UDS/命名诊断请求",
+                "按需启停 Tester Present",
+                "成功响应后推进声明的会话与安全状态",
+            ],
+        }
+
+    def _diagnostic_sequence_execute(self, manifest_file: str) -> dict[str, Any]:
+        self._connected()
+        return DiagnosticSequenceRunner(self.canape).execute(
+            DiagnosticManifest.load(manifest_file)
+        )
+
+    @staticmethod
+    def _diagnostic_dtc_decode(
+        payload: list[int],
+        source: str = "",
+    ) -> dict[str, Any]:
+        return DTCSnapshot.parse_uds(payload, source=source).public()
+
     def _flash_start(
         self,
         device: str,
@@ -1591,6 +1633,37 @@ class CANapeAIToolkit:
                 ),
                 ToolRisk.DIAGNOSTIC,
                 self._tester_present,
+            ),
+            AIToolSpec(
+                "diagnostic_sequence_plan",
+                "离线校验 UDS 诊断清单、P2/P2*、会话、安全状态和 NRC 策略。",
+                _schema(
+                    {"manifest_file": "string"},
+                    required=("manifest_file",),
+                ),
+                ToolRisk.READ_ONLY,
+                self._diagnostic_sequence_plan,
+            ),
+            AIToolSpec(
+                "diagnostic_sequence_execute",
+                "按受控清单执行诊断序列并生成状态与响应证据；必须外部审批。",
+                _schema(
+                    {"manifest_file": "string"},
+                    required=("manifest_file",),
+                ),
+                ToolRisk.DIAGNOSTIC,
+                self._diagnostic_sequence_execute,
+                self._diagnostic_sequence_execute_preview,
+            ),
+            AIToolSpec(
+                "diagnostic_dtc_decode",
+                "离线解析 UDS 0x59 DTC 快照，不向 ECU 发送请求。",
+                _schema(
+                    {"payload": "array", "source": "string"},
+                    required=("payload",),
+                ),
+                ToolRisk.READ_ONLY,
+                self._diagnostic_dtc_decode,
             ),
             AIToolSpec(
                 "flash_start",

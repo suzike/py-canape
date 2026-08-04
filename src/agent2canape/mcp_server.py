@@ -35,6 +35,7 @@ _CANAPE_RUNTIME_TOOLS = {
     "memory_write",
     "diagnostic_raw",
     "diagnostic_named",
+    "diagnostic_sequence_execute",
     "tester_present",
     "flash_start",
     "flash_stop",

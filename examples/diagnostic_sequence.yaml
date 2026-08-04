@@ -1,0 +1,28 @@
+name: vehicle-diagnostic-health-check
+default_device: ECU
+p2_timeout_seconds: 0.05
+p2_star_timeout_seconds: 5.0
+tester_present: true
+stop_on_failure: true
+
+metadata:
+  purpose: 标定或测量前确认 ECU 会话、身份和故障状态
+  owner: vehicle-calibration
+
+steps:
+  - id: enter-extended-session
+    payload: [0x10, 0x03]
+    transition_session: extended
+
+  - id: read-vin
+    payload: [0x22, 0xF1, 0x90]
+    required_session: extended
+
+  - id: read-software-number
+    payload: [0x22, 0xF1, 0x88]
+    required_session: extended
+
+  - id: read-dtc-by-status-mask
+    payload: [0x19, 0x02, 0xFF]
+    required_session: extended
+    tester_present: true

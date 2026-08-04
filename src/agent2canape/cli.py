@@ -420,6 +420,23 @@ def _network_topology_audit(
     return 0 if result["passed"] else 1
 
 
+def _diagnostic_plan(path: str) -> int:
+    from .diagnostics import DiagnosticManifest
+
+    result = DiagnosticManifest.load(path).plan()
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0 if result["passed"] else 1
+
+
+def _diagnostic_dtc_decode(payload: list[str], *, source: str) -> int:
+    from .diagnostics import DTCSnapshot
+
+    data = [int(item, 0) for item in payload]
+    result = DTCSnapshot.parse_uds(data, source=source).public()
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0
+
+
 def _ai_toolkit(approval_file: str | None = None) -> CANapeAIToolkit:
     return CANapeAIToolkit(CANape(), approvals=ApprovalStore(approval_file))
 
@@ -695,6 +712,17 @@ def main(argv: list[str] | None = None) -> int:
     topology_audit.add_argument("manifest", type=str)
     topology_audit.add_argument("--deep", action="store_true")
     topology_audit.add_argument("--snapshot-output", type=str)
+    diagnostic_plan = subparsers.add_parser(
+        "diagnostic-plan",
+        help="校验 UDS 清单、P2/P2*、会话、安全等级和 NRC 策略",
+    )
+    diagnostic_plan.add_argument("manifest", type=str)
+    dtc_decode = subparsers.add_parser(
+        "diagnostic-dtc-decode",
+        help="离线解析 UDS 0x59 DTC 正响应",
+    )
+    dtc_decode.add_argument("payload", nargs="+", type=str)
+    dtc_decode.add_argument("--source", default="", type=str)
     context_validate = subparsers.add_parser(
         "context-validate",
         help="验证 AI 工程对象、别名、单位和范围上下文",
@@ -810,6 +838,10 @@ def main(argv: list[str] | None = None) -> int:
             deep=args.deep,
             snapshot_output=args.snapshot_output,
         )
+    if args.command == "diagnostic-plan":
+        return _diagnostic_plan(args.manifest)
+    if args.command == "diagnostic-dtc-decode":
+        return _diagnostic_dtc_decode(args.payload, source=args.source)
     if args.command == "context-validate":
         return _engineering_context_validate(args.path)
     if args.command == "ai-tools":

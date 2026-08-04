@@ -1,6 +1,6 @@
 """Vector CANape 的 Python COM 控制接口。"""
 
-__version__ = "3.10.0"
+__version__ = "3.11.0"
 
 from .ai_tools import (
     AIActionPlan,
@@ -85,6 +85,17 @@ from .calibration_targets import (
 )
 from .canape import CANape
 from .capabilities import Capability, CapabilityRegistry
+from .diagnostics import (
+    DiagnosticDeviceState,
+    DiagnosticManifest,
+    DiagnosticSequenceRunner,
+    DiagnosticStepSpec,
+    DTCRecord,
+    DTCSnapshot,
+    NRCInfo,
+    UDSResponse,
+    interpret_nrc,
+)
 from .engineering_context import (
     EngineeringContextResolver,
     EngineeringObject,
@@ -302,4 +313,13 @@ __all__ = [
     "NetworkTopologyManifest",
     "NetworkTopologySnapshot",
     "CANapeTopologyAuditor",
+    "NRCInfo",
+    "interpret_nrc",
+    "UDSResponse",
+    "DiagnosticStepSpec",
+    "DiagnosticManifest",
+    "DiagnosticDeviceState",
+    "DiagnosticSequenceRunner",
+    "DTCRecord",
+    "DTCSnapshot",
 ]

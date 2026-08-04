@@ -194,6 +194,14 @@ class FakeAICANape:
     def send_raw_diagnostic_request(self, device, payload, *, timeout=5.0):
         return []
 
+    def send_diagnostic_request(
+        self, device, service, *, parameters=None, timeout=5.0
+    ):
+        return []
+
+    def set_tester_present(self, device, *, enabled):
+        return int(enabled)
+
     def start_flash(self, device, job, session, *, config_file=None):
         return None
 
@@ -641,6 +649,50 @@ devices:
         self.assertTrue(audit["result"]["passed"])
         self.assertEqual(len(audit["result"]["snapshot_digest"]), 64)
         self.assertEqual(natural["tool"], "network_topology_audit")
+
+    def test_diagnostic_plan_dtc_decode_and_approved_execution_preview(self):
+        diagnostic_path = Path(self.temporary.name) / "diagnostic.yaml"
+        diagnostic_path.write_text(
+            """name: ai-diagnostic
+default_device: ECU
+p2_timeout_seconds: 0.05
+p2_star_timeout_seconds: 5
+steps:
+  - id: read-vin
+    payload: [0x22, 0xF1, 0x90]
+""",
+            encoding="utf-8",
+        )
+        plan = self.toolkit.registry.invoke(
+            "diagnostic_sequence_plan",
+            {"manifest_file": str(diagnostic_path)},
+        )
+        decoded = self.toolkit.registry.invoke(
+            "diagnostic_dtc_decode",
+            {
+                "payload": [0x59, 0x02, 0xFF, 0x12, 0x34, 0x56, 0x09],
+                "source": "vehicle-a",
+            },
+        )
+        execution = self.toolkit.registry.invoke(
+            "diagnostic_sequence_execute",
+            {"manifest_file": str(diagnostic_path)},
+            dry_run=True,
+        )
+        natural = self.toolkit.planner.plan(
+            "执行诊断序列",
+            context={"manifest_file": str(diagnostic_path)},
+        )
+
+        self.assertTrue(plan["result"]["passed"])
+        self.assertEqual(decoded["result"]["records"][0]["code"], "123456")
+        self.assertEqual(execution["status"], "planned")
+        self.assertEqual(execution["risk"], "DIAGNOSTIC")
+        self.assertEqual(
+            execution["execution_preview"]["operation"],
+            "execute_diagnostic_sequence",
+        )
+        self.assertEqual(natural["tool"], "diagnostic_sequence_execute")
 
     def test_ai_tools_expose_calibration_operations_and_pareto(self):
         change_set = CalibrationChangeSet(
