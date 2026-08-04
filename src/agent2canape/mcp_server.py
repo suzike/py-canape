@@ -29,6 +29,8 @@ _CANAPE_RUNTIME_TOOLS = {
     "measurement_state",
     "measurement_apply",
     "measurement_reconnect_restore",
+    "measurement_stream_snapshot",
+    "measurement_stream_collect",
     "memory_read",
     "memory_write",
     "diagnostic_raw",

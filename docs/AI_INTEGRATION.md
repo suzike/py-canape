@@ -255,6 +255,9 @@ A2L 文本枚举会以“显示标签→原始值”的受控方式参与规划�
 应用 examples/measurement_manifest.yaml 的测量清单
 验证 build/vehicle-measurement.mf4 的信号和录制时长
 重连 ECU 并恢复测量清单
+规划 examples/measurement_subscription.yaml 的在线订阅和内存预算
+读取在线测量流快照并计算采样质量
+采集 10000 个样本到可恢复 JSONL 分卷证据
 向 GW 发送诊断请求 22 F1 90
 ```
 
@@ -300,8 +303,8 @@ Latin Hypercube 和坐标搜索可用于台架标定，每次实验后都会恢�
 
 | 风险等级 | 典型工具 | 执行条件 |
 |---|---|---|
-| `READ_ONLY` | 标定读取、测量清单规划、MDF 验收、评审/DOE 报告、刷写状态 | 可直接执行 |
-| `PROJECT_CONTROL` | 打开项目、设备上下线、网络配置 | 外部审批 |
+| `READ_ONLY` | 标定读取、测量/订阅规划、在线快照、MDF 验收、DOE 报告 | 可直接执行 |
+| `PROJECT_CONTROL` | 打开项目、设备上下线、网络配置、流式证据采集 | 外部审批；流式采集绑定测量配置和通道清单 |
 | `MEASUREMENT_CONTROL` | 启停测量、应用测量清单、重连恢复 | 外部审批、实时快照绑定、失败回滚 |
 | `CALIBRATION_WRITE` | 标定量/曲线/MAP/数据集写入 | 外部审批、范围校验、回读 |
 | `MEMORY_WRITE` | ECU 内存写入 | 外部审批、回读 |

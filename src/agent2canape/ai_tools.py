@@ -23,6 +23,11 @@ from .measurement import (
     MeasurementManifest,
     MeasurementSessionManager,
 )
+from .streaming import (
+    MeasurementStreamSubscription,
+    MeasurementSubscriptionSpec,
+    RotatingMeasurementWriter,
+)
 
 
 def _now() -> datetime:
@@ -482,6 +487,18 @@ class EngineeringCommandPlanner:
         (
             ("重连恢复测量", "reconnect and restore measurement"),
             "measurement_reconnect_restore",
+        ),
+        (
+            ("测量流规划", "在线订阅规划", "measurement stream plan"),
+            "measurement_stream_plan",
+        ),
+        (
+            ("测量流快照", "在线信号快照", "measurement stream snapshot"),
+            "measurement_stream_snapshot",
+        ),
+        (
+            ("采集测量流", "流式测量证据", "collect measurement stream"),
+            "measurement_stream_collect",
         ),
         (("设备上线", "go online"), "device_online"),
         (("设备下线", "go offline"), "device_offline"),
@@ -966,6 +983,107 @@ class CANapeAIToolkit:
             download=download,
         )
 
+    @staticmethod
+    def _measurement_stream_plan(subscription_file: str) -> dict[str, Any]:
+        return MeasurementSubscriptionSpec.load(subscription_file).plan()
+
+    def _measurement_stream_snapshot(
+        self,
+        subscription_file: str,
+        sample_count: int = 1,
+    ) -> dict[str, Any]:
+        if not 1 <= sample_count <= 1000:
+            raise ValueError("MCP 测量流快照 sample_count 必须在 1 到 1000 之间")
+        self._connected()
+        subscription = MeasurementStreamSubscription(
+            self.canape,
+            MeasurementSubscriptionSpec.load(subscription_file),
+        )
+        result = subscription.collect(sample_count)
+        return {
+            **result,
+            "samples": [item.public() for item in subscription.buffer.recent(sample_count)],
+        }
+
+    def _measurement_stream_collect_preview(
+        self,
+        subscription_file: str,
+        output_file: str,
+        sample_count: int,
+        max_part_bytes: int = 67108864,
+        max_parts: int = 100,
+        flush_every: int = 1,
+    ) -> dict[str, Any]:
+        if not 1 <= sample_count <= 100000:
+            raise ValueError("MCP 流式采集 sample_count 必须在 1 到 100000 之间")
+        spec = MeasurementSubscriptionSpec.load(subscription_file)
+        plan = spec.require_valid()
+        output = Path(output_file).expanduser().resolve()
+        if output.suffix.casefold() not in {".jsonl", ".csv"}:
+            raise ValueError("流式输出文件必须是 .jsonl 或 .csv")
+        if max_part_bytes <= 0 or max_parts <= 0 or flush_every <= 0:
+            raise ValueError("分卷与刷新参数必须大于0")
+        self._connected()
+        current = {
+            "measurement_running": bool(self.canape.is_measurement_running()),
+            "measurement_configuration": dict(
+                self.canape.get_measurement_configuration()
+            ),
+            "configured_channels": list(
+                self.canape.list_measurement_channels(spec.device, spec.task)
+            ),
+        }
+        precondition_digest = hashlib.sha256(
+            _canonical(current).encode("utf-8")
+        ).hexdigest()
+        return {
+            "risk": ToolRisk.PROJECT_CONTROL.name,
+            "subscription": plan,
+            "current": current,
+            "desired": {
+                "output_file": str(output),
+                "sample_count": sample_count,
+                "max_part_bytes": max_part_bytes,
+                "max_parts": max_parts,
+                "flush_every": flush_every,
+            },
+            "recovery": {
+                "method": "resume_from_atomic_stream_checkpoint",
+                "history_deletion": False,
+            },
+            "precondition_digest": precondition_digest,
+        }
+
+    def _measurement_stream_collect(
+        self,
+        subscription_file: str,
+        output_file: str,
+        sample_count: int,
+        max_part_bytes: int = 67108864,
+        max_parts: int = 100,
+        flush_every: int = 1,
+    ) -> dict[str, Any]:
+        if not 1 <= sample_count <= 100000:
+            raise ValueError("MCP 流式采集 sample_count 必须在 1 到 100000 之间")
+        self._connected()
+        spec = MeasurementSubscriptionSpec.load(subscription_file)
+        writer = RotatingMeasurementWriter(
+            output_file,
+            spec.channels,
+            max_part_bytes=max_part_bytes,
+            max_parts=max_parts,
+            flush_every=flush_every,
+        )
+        try:
+            result = MeasurementStreamSubscription(
+                self.canape,
+                spec,
+                writer=writer,
+            ).collect(sample_count)
+        finally:
+            evidence = writer.close()
+        return {**result, "evidence": evidence}
+
     def _device_online(self, device: str, download: bool = False) -> dict[str, Any]:
         self._connected()
         self.canape.set_device_online(device, download=download)
@@ -1339,6 +1457,44 @@ class CANapeAIToolkit:
                 ToolRisk.MEASUREMENT_CONTROL,
                 self._measurement_reconnect_restore,
                 self._measurement_reconnect_restore_preview,
+            ),
+            AIToolSpec(
+                "measurement_stream_plan",
+                "校验在线测量订阅、缓冲上限、时间窗和内存预算。",
+                _schema(
+                    {"subscription_file": "string"},
+                    required=("subscription_file",),
+                ),
+                ToolRisk.READ_ONLY,
+                self._measurement_stream_plan,
+            ),
+            AIToolSpec(
+                "measurement_stream_snapshot",
+                "在调用线程中读取有界在线信号快照并返回滚动质量统计。",
+                _schema(
+                    {"subscription_file": "string", "sample_count": "integer"},
+                    required=("subscription_file",),
+                ),
+                ToolRisk.READ_ONLY,
+                self._measurement_stream_snapshot,
+            ),
+            AIToolSpec(
+                "measurement_stream_collect",
+                "有界采集在线信号并增量写入可恢复 JSONL/CSV 分卷证据。",
+                _schema(
+                    {
+                        "subscription_file": "string",
+                        "output_file": "string",
+                        "sample_count": "integer",
+                        "max_part_bytes": "integer",
+                        "max_parts": "integer",
+                        "flush_every": "integer",
+                    },
+                    required=("subscription_file", "output_file", "sample_count"),
+                ),
+                ToolRisk.PROJECT_CONTROL,
+                self._measurement_stream_collect,
+                self._measurement_stream_collect_preview,
             ),
             AIToolSpec(
                 "memory_read",

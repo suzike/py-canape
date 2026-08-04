@@ -1,5 +1,22 @@
 # 变更记录
 
+## 3.9.0 - 2026-08-04
+
+- 新增 `MeasurementSubscriptionSpec`，明确任务通道、读取模式、时间戳比例、期望周期、
+  双重缓冲上限、轮询间隔和连续错误熔断；
+- 新增调用线程内 `MeasurementStreamSubscription`，批量映射任务采样，显式丢弃并统计重复、
+  乱序和读取错误，避免跨线程共享 CANape COM；
+- 新增有界滚动窗口，统计采样断点、P95/最大抖动、估算缺失样本，以及通道缺失、冻结、
+  均值、标准差和 RMS；
+- 新增可恢复 JSONL/CSV 增量写入、字节分卷、`fsync`、原子检查点、恢复一致性校验和
+  分卷 SHA-256；达到最大分卷数时停止且不删除历史证据；
+- AI/MCP 新增 `measurement_stream_plan`、`measurement_stream_snapshot` 和
+  `measurement_stream_collect`，采集证据绑定实时测量配置并要求外部审批；
+- CLI 新增 `measurement-stream-plan` 和 `measurement-stream-collect`，提供通用订阅示例、
+  在线流式测量指南和非 Mermaid SVG 配图；
+- 新增缓冲背压、质量统计、连续错误、分卷恢复、CSV、CLI 和 AI/MCP 测试，累计 164 项
+  自动化测试。
+
 ## 3.8.0 - 2026-08-04
 
 - 新增通用测量清单，描述设备、任务、信号、采样率、优先级、记录器、触发窗口和输出；

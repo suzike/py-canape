@@ -338,6 +338,60 @@ def _measurement_verify(
     return 0 if result["passed"] else 1
 
 
+def _measurement_stream_plan(path: str) -> int:
+    from .streaming import MeasurementSubscriptionSpec
+
+    result = MeasurementSubscriptionSpec.load(path).plan()
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0 if result["passed"] else 1
+
+
+def _measurement_stream_collect(
+    project: str,
+    subscription_file: str,
+    *,
+    sample_count: int,
+    output_file: str | None,
+    max_part_bytes: int,
+    max_parts: int,
+    flush_every: int,
+) -> int:
+    from .streaming import (
+        MeasurementStreamSubscription,
+        MeasurementSubscriptionSpec,
+        RotatingMeasurementWriter,
+    )
+
+    spec = MeasurementSubscriptionSpec.load(subscription_file)
+    writer = (
+        RotatingMeasurementWriter(
+            output_file,
+            spec.channels,
+            max_part_bytes=max_part_bytes,
+            max_parts=max_parts,
+            flush_every=flush_every,
+        )
+        if output_file
+        else None
+    )
+    evidence = None
+    try:
+        with CANape() as canape:
+            canape.open(project)
+            subscription = MeasurementStreamSubscription(canape, spec, writer=writer)
+            result = subscription.collect(sample_count)
+            result["samples"] = [
+                item.public() for item in subscription.buffer.recent(sample_count)
+            ]
+    finally:
+        if writer is not None:
+            evidence = writer.close()
+    if evidence is not None:
+        result["evidence"] = evidence
+    print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
+    return 0 if result["status"] == "completed" else 1
+
+
 def _ai_toolkit(approval_file: str | None = None) -> CANapeAIToolkit:
     return CANapeAIToolkit(CANape(), approvals=ApprovalStore(approval_file))
 
@@ -583,6 +637,22 @@ def main(argv: list[str] | None = None) -> int:
         default=0.0,
     )
     measurement_verify.add_argument("--deep", action="store_true")
+    stream_plan = subparsers.add_parser(
+        "measurement-stream-plan",
+        help="校验在线订阅、环形缓冲和长时间采集内存预算",
+    )
+    stream_plan.add_argument("subscription", type=str)
+    stream_collect = subparsers.add_parser(
+        "measurement-stream-collect",
+        help="从 CANape 任务有界采样并增量写入 JSONL/CSV 证据",
+    )
+    stream_collect.add_argument("project", type=str)
+    stream_collect.add_argument("subscription", type=str)
+    stream_collect.add_argument("--samples", type=int, default=1)
+    stream_collect.add_argument("--output", type=str)
+    stream_collect.add_argument("--max-part-bytes", type=int, default=67108864)
+    stream_collect.add_argument("--max-parts", type=int, default=100)
+    stream_collect.add_argument("--flush-every", type=int, default=1)
     context_validate = subparsers.add_parser(
         "context-validate",
         help="验证 AI 工程对象、别名、单位和范围上下文",
@@ -676,6 +746,18 @@ def main(argv: list[str] | None = None) -> int:
             expected_channels=args.expected_channels,
             minimum_duration_seconds=args.minimum_duration_seconds,
             deep=args.deep,
+        )
+    if args.command == "measurement-stream-plan":
+        return _measurement_stream_plan(args.subscription)
+    if args.command == "measurement-stream-collect":
+        return _measurement_stream_collect(
+            args.project,
+            args.subscription,
+            sample_count=args.samples,
+            output_file=args.output,
+            max_part_bytes=args.max_part_bytes,
+            max_parts=args.max_parts,
+            flush_every=args.flush_every,
         )
     if args.command == "context-validate":
         return _engineering_context_validate(args.path)

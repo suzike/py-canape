@@ -44,6 +44,7 @@ class FakeAICANape:
                 "data_reduction": 2,
             }
         }
+        self.stream_timestamp = 0
 
     def connect(self):
         self.connected = True
@@ -150,6 +151,14 @@ class FakeAICANape:
     def reconnect_device(self, device, *, download=False, restore_measurement=False):
         self.measurement_channels["ECU::10ms"] = []
         return True
+
+    def read_task_current_values(self, device, task):
+        self.stream_timestamp += 1
+        channels = self.measurement_channels[f"{device}::{task}"]
+        return tuple(float(self.stream_timestamp) for _ in channels), self.stream_timestamp
+
+    def read_task_next_sample(self, device, task):
+        return self.read_task_current_values(device, task)
 
     def read_memory(self, device, address, size, *, address_extension=0):
         return tuple(range(size))
@@ -525,6 +534,54 @@ recorders:
             "请执行测量清单规划", context={"manifest_file": str(manifest_path)}
         )
         self.assertEqual(natural["tool"], "measurement_plan")
+
+    def test_measurement_stream_tools_and_approval(self):
+        subscription_path = Path(self.temporary.name) / "subscription.yaml"
+        subscription_path.write_text(
+            """name: ai-stream
+device: ECU
+task: 10ms
+channels: [Existing]
+mode: next
+timestamp_scale: 0.1
+expected_period_seconds: 0.1
+buffer_samples: 10
+max_age_seconds: 1
+""",
+            encoding="utf-8",
+        )
+        plan = self.toolkit.registry.invoke(
+            "measurement_stream_plan",
+            {"subscription_file": str(subscription_path)},
+        )
+        self.assertTrue(plan["result"]["passed"])
+        snapshot = self.toolkit.registry.invoke(
+            "measurement_stream_snapshot",
+            {"subscription_file": str(subscription_path), "sample_count": 2},
+        )
+        self.assertEqual(snapshot["result"]["accepted_samples"], 2)
+        self.assertEqual(snapshot["result"]["samples"][-1]["values"], {"Existing": 2.0})
+
+        output = Path(self.temporary.name) / "ai-stream.jsonl"
+        arguments = {
+            "subscription_file": str(subscription_path),
+            "output_file": str(output),
+            "sample_count": 2,
+        }
+        planned = self.toolkit.registry.invoke("measurement_stream_collect", arguments)
+        self.assertEqual(planned["status"], "planned")
+        self.assertFalse(planned["execution_preview"]["recovery"]["history_deletion"])
+        plan_id = planned["action_plan"]["id"]
+        self.store.approve(plan_id, "measurement-engineer")
+        executed = self.toolkit.registry.invoke(
+            "measurement_stream_collect",
+            arguments,
+            dry_run=False,
+            action_plan_id=plan_id,
+        )
+        self.assertTrue(executed["executed"])
+        self.assertEqual(executed["result"]["evidence"]["total_samples"], 2)
+        self.assertTrue((Path(self.temporary.name) / "ai-stream.part0001.jsonl").is_file())
 
     def test_ai_tools_expose_calibration_operations_and_pareto(self):
         change_set = CalibrationChangeSet(

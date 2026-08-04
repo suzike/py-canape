@@ -9,7 +9,7 @@
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![CANape](https://img.shields.io/badge/CANape-17.x-0EA5E9)](#canape-17-兼容性)
 [![Capabilities](https://img.shields.io/badge/Capabilities-140%2F140-14B8A6)](./CAPABILITIES.md)
-[![Tests](https://img.shields.io/badge/Tests-155%20passed-22C55E)](#质量与验证)
+[![Tests](https://img.shields.io/badge/Tests-164%20passed-22C55E)](#质量与验证)
 [![License](https://img.shields.io/badge/License-MIT-F59E0B)](./LICENSE)
 
 **ECU 标定 · AI Agent · 在线测量 · 离线分析 · 安全门禁 · 工程闭环**
@@ -128,6 +128,24 @@ CANape 1.9 COM 没有通用触发配置接口，因此触发表达式需在受�
 Agent2Canape 不虚构 COM 方法，只负责引用、窗口/FIFO 预算和产物闭环。详见
 [测量工程闭环指南](./docs/MEASUREMENT_ENGINEERING.md)。
 
+### 在线流式观察窗
+
+<img src="./docs/assets/streaming-measurement-loop.svg" alt="在线流式测量治理" width="100%">
+
+任务级在线订阅使用同一 COM 调用线程读取，按样本数和时间跨度双重限制内存；重复、乱序、
+容量淘汰、时间淘汰和连续错误均有显式计数。滚动窗口计算采样缺口、抖动、冻结、均值、
+标准差与 RMS，并可将 JSONL/CSV 增量写入可恢复分卷。
+
+```powershell
+agent2canape measurement-stream-plan examples\measurement_subscription.yaml
+agent2canape measurement-stream-collect D:\VehicleProject `
+  examples\measurement_subscription.yaml --samples 10000 `
+  --output build\vehicle-stream.jsonl
+```
+
+分卷达到上限时停止，不会自动删除历史证据。详细线程边界、检查点协议和 MCP 上限见
+[在线流式测量指南](./docs/STREAMING_MEASUREMENT.md)。
+
 ## Codex / Claude Code 自然语言驱动
 
 <img src="./docs/assets/ai-calibration-loop.svg" alt="AI 驱动 ECU 标定闭环" width="100%">
@@ -204,7 +222,7 @@ agent2canape capabilities
 | 模块 | 主要职责 |
 |---|---|
 | `CANape` | 会话、设备、测量、标定、记录器、网络、诊断和刷写 |
-| `Measurement*` | 测量清单、DAQ/FIFO 预算、事务应用、掉线恢复和 MDF/MF4 验收 |
+| `Measurement*` | 测量清单、DAQ/FIFO 预算、事务恢复、MDF 验收和有界在线流式窗口 |
 | `Calibration*` | 数据交换、物理约束、DOE 质量、目标适配、多 ECU、Pareto 和安全代理优化 |
 | `CANapeAIToolkit` | AI 工具 Schema、自然语言计划、审批摘要和安全调度 |
 | `MCP Server` | stdio 接口、会话限流、CANape 资源租约、摘要审计和运行状态 |
@@ -383,11 +401,11 @@ CANape 的 vMDM 附属进程可能在 `Quit` 后继续驻留。若短时间内�
 
 ```text
 Ruff                    All checks passed
-Pytest                  155 passed
+Pytest                  164 passed
 Capability contracts    140 / 140, unique and resolvable
 Dependency check        No broken requirements
 MDF / BLF / DBC         Real file round-trip passed
-MCP                     38 tools, discovery, approval, runtime governance and audit passed
+MCP                     41 tools, discovery, approval, runtime governance and audit passed
 MCP clients             Codex model call + CANape read-only project call passed
 Workflow                Validate + Dry-run passed
 ```

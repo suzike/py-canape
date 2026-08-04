@@ -1,0 +1,20 @@
+name: vehicle-online-window
+device: ECU
+task: 10ms
+channels:
+  - VehicleSpeed
+  - EngineSpeed
+  - ControlDeviation
+
+# next 读取任务 FIFO；current 读取当前值并丢弃重复时间戳。
+mode: next
+
+# CANape COM 时间戳乘以该比例后转换为秒。项目必须按实际时间戳单位设置。
+timestamp_scale: 0.000001
+expected_period_seconds: 0.01
+
+# 双重上限确保长时间采集不会无界占用内存。
+buffer_samples: 10000
+max_age_seconds: 60
+poll_interval_seconds: 0
+max_consecutive_errors: 3
