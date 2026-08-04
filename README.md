@@ -9,7 +9,7 @@
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![CANape](https://img.shields.io/badge/CANape-17.x-0EA5E9)](#canape-17-兼容性)
 [![Capabilities](https://img.shields.io/badge/Capabilities-140%2F140-14B8A6)](./CAPABILITIES.md)
-[![Tests](https://img.shields.io/badge/Tests-133%20passed-22C55E)](#质量与验证)
+[![Tests](https://img.shields.io/badge/Tests-142%20passed-22C55E)](#质量与验证)
 [![License](https://img.shields.io/badge/License-MIT-F59E0B)](./LICENSE)
 
 **ECU 标定 · AI Agent · 在线测量 · 离线分析 · 安全门禁 · 工程闭环**
@@ -69,6 +69,7 @@ CANape 项目、ECU 在线状态、MDF/BLF 数据、A2L/DBC 数据库、标定�
 | AI 驱动 | 自然语言规划、MCP 工具、参数摘要绑定、单次外部审批 |
 | AI 工程上下文 | ECU/对象别名消歧、单位换算、范围门禁和模型版本元数据 |
 | 安全计划预览 | 当前值、目标值、差异、恢复快照及执行前基线一致性保护 |
+| 多 Agent 治理 | 会话标识、调用限流、跨进程 CANape 租约、摘要审计和状态查询 |
 
 ```python
 from agent2canape import CalibrationChange, CalibrationDataset, CalibrationPlan
@@ -180,7 +181,7 @@ agent2canape capabilities
 | `CANape` | 会话、设备、测量、标定、记录器、网络、诊断和刷写 |
 | `Calibration*` | 数据交换、物理约束、DOE 质量、目标适配、多 ECU、Pareto 和安全代理优化 |
 | `CANapeAIToolkit` | AI 工具 Schema、自然语言计划、审批摘要和安全调度 |
-| `MCP Server` | Codex、Claude Code 等 Agent 的本地 stdio 接口 |
+| `MCP Server` | stdio 接口、会话限流、CANape 资源租约、摘要审计和运行状态 |
 | `AssetManager` | 环境预检、工程资产、版本清单、SHA-256、快照和恢复 |
 | `OfflineData` | CSV、JSON、Parquet、Excel、MDF、BLF、A2L、DBC |
 | `SignalDictionary` | 跨数据源统一名称、单位、类型、范围和转换规则 |
@@ -356,11 +357,11 @@ CANape 的 vMDM 附属进程可能在 `Quit` 后继续驻留。若短时间内�
 
 ```text
 Ruff                    All checks passed
-Pytest                  133 passed
+Pytest                  142 passed
 Capability contracts    140 / 140, unique and resolvable
 Dependency check        No broken requirements
 MDF / BLF / DBC         Real file round-trip passed
-MCP                     FastMCP server and tool discovery passed
+MCP                     FastMCP discovery, runtime governance and audit passed
 MCP clients             Codex model call + CANape read-only project call passed
 Workflow                Validate + Dry-run passed
 ```

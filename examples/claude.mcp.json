@@ -7,6 +7,10 @@
       "env": {
         "AGENT2CANAPE_APPROVAL_STORE": "E:/secure/Agent2Canape-approvals.json",
         "AGENT2CANAPE_DEFAULT_PROJECT": "D:/CANapeProjects/Vehicle",
+        "AGENT2CANAPE_MCP_SESSION_ID": "claude-vehicle-project",
+        "AGENT2CANAPE_MCP_LOCK_DIR": "E:/secure/Agent2Canape-mcp-locks",
+        "AGENT2CANAPE_MCP_AUDIT_LOG": "E:/secure/Agent2Canape-mcp-audit.jsonl",
+        "AGENT2CANAPE_MCP_RATE_LIMIT": "120",
         "SYSTEMROOT": "C:/Windows",
         "WINDIR": "C:/Windows"
       }

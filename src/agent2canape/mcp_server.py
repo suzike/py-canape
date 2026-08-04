@@ -11,6 +11,33 @@ from typing import Any
 from .ai_tools import ApprovalStore, CANapeAIToolkit
 from .canape import CANape
 from .errors import OptionalDependencyError
+from .mcp_runtime import MCPRuntimeGovernor
+
+_CANAPE_RUNTIME_TOOLS = {
+    "project_info",
+    "project_open",
+    "device_list",
+    "device_online",
+    "device_offline",
+    "calibration_list",
+    "calibration_read",
+    "calibration_write",
+    "calibration_export",
+    "calibration_import",
+    "measurement_start",
+    "measurement_stop",
+    "measurement_state",
+    "memory_read",
+    "memory_write",
+    "diagnostic_raw",
+    "diagnostic_named",
+    "tester_present",
+    "flash_start",
+    "flash_stop",
+    "flash_state",
+    "network_list",
+    "network_configure",
+}
 
 
 def create_server(
@@ -19,6 +46,7 @@ def create_server(
     approval_file: str | Path | None = None,
     default_project: str | Path | None = None,
     tool_allowlist: str | list[str] | tuple[str, ...] | None = None,
+    runtime_governor: MCPRuntimeGovernor | None = None,
 ) -> Any:
     try:
         from mcp.server.fastmcp import FastMCP
@@ -33,6 +61,14 @@ def create_server(
         canape or CANape(),
         approvals=ApprovalStore(approval_path),
         default_project=project_path,
+    )
+    runtime = runtime_governor or MCPRuntimeGovernor(
+        session_id=os.getenv("AGENT2CANAPE_MCP_SESSION_ID", ""),
+        lock_directory=os.getenv("AGENT2CANAPE_MCP_LOCK_DIR"),
+        audit_file=os.getenv("AGENT2CANAPE_MCP_AUDIT_LOG"),
+        rate_limit=int(os.getenv("AGENT2CANAPE_MCP_RATE_LIMIT", "120")),
+        lock_timeout=float(os.getenv("AGENT2CANAPE_MCP_LOCK_TIMEOUT", "10")),
+        lease_seconds=float(os.getenv("AGENT2CANAPE_MCP_LEASE_SECONDS", "3600")),
     )
     manifest = toolkit.registry.manifest()
     configured_allowlist = (
@@ -74,24 +110,36 @@ def create_server(
         return manifest
 
     @server.tool()
+    def agent2canape_runtime_status() -> dict[str, Any]:
+        """返回当前 MCP 会话、调用计数、速率限制和治理文件位置。"""
+        return runtime.status()
+
+    @server.tool()
     def agent2canape_plan_natural_language(
         request: str,
         context: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """结合对象别名、ECU 和单位上下文生成工具参数；不会执行操作。"""
-        plan = toolkit.planner.plan(request, context=context)
-        if (
-            allowed_names is not None
-            and plan.get("tool")
-            and plan["tool"] not in allowed_names
-        ):
-            return {
-                "status": "not_exposed",
-                "text": request,
-                "tool": plan["tool"],
-                "message": "该工具未包含在当前 MCP 工具允许列表中",
-            }
-        return plan
+        def plan_request() -> dict[str, Any]:
+            plan = toolkit.planner.plan(request, context=context)
+            if (
+                allowed_names is not None
+                and plan.get("tool")
+                and plan["tool"] not in allowed_names
+            ):
+                return {
+                    "status": "not_exposed",
+                    "text": request,
+                    "tool": plan["tool"],
+                    "message": "该工具未包含在当前 MCP 工具允许列表中",
+                }
+            return plan
+
+        return runtime.execute(
+            "plan_natural_language",
+            {"request": request, "context": context or {}},
+            plan_request,
+        )
 
     def expose(item: dict[str, Any]) -> None:
         name = item["name"]
@@ -114,11 +162,25 @@ def create_server(
             arguments = {
                 key: value for key, value in kwargs.items() if value is not None
             }
-            return toolkit.registry.invoke(
+            audit_arguments = {
+                **arguments,
+                "dry_run": dry_run,
+                "action_plan_id": action_plan_id,
+            }
+            return runtime.execute(
                 name,
-                arguments,
-                dry_run=dry_run,
-                action_plan_id=action_plan_id,
+                audit_arguments,
+                lambda: toolkit.registry.invoke(
+                    name,
+                    arguments,
+                    dry_run=dry_run,
+                    action_plan_id=action_plan_id,
+                ),
+                resource=(
+                    "canape-com"
+                    if name in _CANAPE_RUNTIME_TOOLS
+                    else ""
+                ),
             )
 
         invoke.__name__ = f"agent2canape_{name}"

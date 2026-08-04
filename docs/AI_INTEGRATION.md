@@ -35,6 +35,9 @@ Codex、Claude Code 和 CI 收集。
 codex mcp add Agent2Canape `
   --env AGENT2CANAPE_APPROVAL_STORE=E:\secure\Agent2Canape-approvals.json `
   --env AGENT2CANAPE_DEFAULT_PROJECT=D:\CANapeProjects\Vehicle `
+  --env AGENT2CANAPE_MCP_SESSION_ID=codex-vehicle-project `
+  --env AGENT2CANAPE_MCP_LOCK_DIR=E:\secure\Agent2Canape-mcp-locks `
+  --env AGENT2CANAPE_MCP_AUDIT_LOG=E:\secure\Agent2Canape-mcp-audit.jsonl `
   -- E:\path\to\Agent2Canape\.venv\Scripts\agent2canape-mcp.exe
 
 codex mcp get Agent2Canape
@@ -52,6 +55,10 @@ tool_timeout_sec = 120.0
 [mcp_servers.Agent2Canape.env]
 AGENT2CANAPE_APPROVAL_STORE = "E:/secure/Agent2Canape-approvals.json"
 AGENT2CANAPE_DEFAULT_PROJECT = "D:/CANapeProjects/Vehicle"
+AGENT2CANAPE_MCP_SESSION_ID = "codex-vehicle-project"
+AGENT2CANAPE_MCP_LOCK_DIR = "E:/secure/Agent2Canape-mcp-locks"
+AGENT2CANAPE_MCP_AUDIT_LOG = "E:/secure/Agent2Canape-mcp-audit.jsonl"
+AGENT2CANAPE_MCP_RATE_LIMIT = "120"
 ```
 
 CLI 格式以本机 `codex mcp add --help` 为准；项目内示例见
@@ -71,6 +78,10 @@ Claude Code 支持项目级 `.mcp.json`。复制示例并替换路径：
       "env": {
         "AGENT2CANAPE_APPROVAL_STORE": "E:/secure/Agent2Canape-approvals.json",
         "AGENT2CANAPE_DEFAULT_PROJECT": "D:/CANapeProjects/Vehicle",
+        "AGENT2CANAPE_MCP_SESSION_ID": "claude-vehicle-project",
+        "AGENT2CANAPE_MCP_LOCK_DIR": "E:/secure/Agent2Canape-mcp-locks",
+        "AGENT2CANAPE_MCP_AUDIT_LOG": "E:/secure/Agent2Canape-mcp-audit.jsonl",
+        "AGENT2CANAPE_MCP_RATE_LIMIT": "120",
         "SYSTEMROOT": "C:/Windows",
         "WINDIR": "C:/Windows"
       }
@@ -87,6 +98,9 @@ claude mcp add Agent2Canape `
   --scope project `
   -e AGENT2CANAPE_APPROVAL_STORE=E:\secure\Agent2Canape-approvals.json `
   -e AGENT2CANAPE_DEFAULT_PROJECT=D:\CANapeProjects\Vehicle `
+  -e AGENT2CANAPE_MCP_SESSION_ID=claude-vehicle-project `
+  -e AGENT2CANAPE_MCP_LOCK_DIR=E:\secure\Agent2Canape-mcp-locks `
+  -e AGENT2CANAPE_MCP_AUDIT_LOG=E:\secure\Agent2Canape-mcp-audit.jsonl `
   -e SYSTEMROOT=C:\Windows `
   -e WINDIR=C:\Windows
 
@@ -130,6 +144,31 @@ AGENT2CANAPE_MCP_TOOL_ALLOWLIST=project_info,device_list,calibration_read
 Codex 的 `PermissionRequest` Hook 和 Agent2Canape 自身的两阶段审批是两层独立门禁。
 前者负责 AI 客户端工具授权，后者负责 CANape 工程动作授权；不应为验证连通性而全局
 关闭任一门禁。
+
+## 多客户端运行治理
+
+Codex 与 Claude Code 会分别启动 stdio MCP Server 进程。两个客户端必须使用不同的
+`AGENT2CANAPE_MCP_SESSION_ID`，但应指向相同的锁目录和审计文件。这样可以防止两个
+AI 会话同时占用 CANape COM，并把调用轨迹汇入同一个本机 JSONL 日志。
+
+| 环境变量 | 默认值 | 作用 |
+|---|---:|---|
+| `AGENT2CANAPE_MCP_SESSION_ID` | 自动 UUID | 会话标识；仅允许字母、数字、点、下划线、冒号和连字符 |
+| `AGENT2CANAPE_MCP_LOCK_DIR` | `~/.agent2canape/mcp-locks` | 多 MCP 进程共享的 CANape 资源租约目录 |
+| `AGENT2CANAPE_MCP_AUDIT_LOG` | `~/.agent2canape/mcp-audit.jsonl` | 多进程安全追加的摘要审计文件 |
+| `AGENT2CANAPE_MCP_RATE_LIMIT` | `120` | 每个 Server 进程每 60 秒允许的调用数；`0` 表示不限制 |
+| `AGENT2CANAPE_MCP_LOCK_TIMEOUT` | `10` | 等待 CANape 资源租约的秒数 |
+| `AGENT2CANAPE_MCP_LEASE_SECONDS` | `3600` | 无有效 PID 的异常租约兜底过期秒数 |
+
+在线 CANape 工具进入全局 `canape-com` 租约后才会执行。持有进程退出后，下一调用可以
+恢复陈旧锁；若租约缺少有效 PID，则按到期时间兜底恢复。存活进程即使执行超过租期也
+不会被抢占。租约文件包含 PID、会话和到期时间，不包含工程参数或凭据。
+自然语言规划及离线工具不占用 CANape 租约，但同样受会话限流和摘要审计约束。
+
+审计记录只保存工具名、状态、耗时、错误类型，以及参数和结果的 SHA-256 摘要；不会
+写入参数原文、工具结果或异常消息。审计目录仍应使用操作系统权限保护，不应提交到 Git。
+调用 `agent2canape_runtime_status` 可读取当前会话、PID、活动/完成/失败/拒绝计数、
+速率窗口、锁目录和审计文件位置。该状态查询自身不消耗限流配额。
 
 ## 自然语言到工程动作
 
