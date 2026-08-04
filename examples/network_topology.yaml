@@ -1,0 +1,35 @@
+name: vehicle-network-baseline
+allow_unexpected_networks: false
+allow_unexpected_devices: false
+
+# bus_type/bitrate 是受控项目语义。CANape 1.9 COM 网络对象只可靠提供名称和激活态。
+networks:
+  - name: CAN1
+    bus_type: can
+    bitrate: 500000
+    expected_active: true
+    required: true
+
+devices:
+  - name: VCU
+    network: CAN1
+    channel: 1
+    driver_type: XCP
+    expected_online: true
+    databases: [VehicleDBC]
+    required: true
+
+databases:
+  - name: VehicleDBC
+    path: vehicle_network.dbc
+    kind: dbc
+    sha256: 435001140775d714c1629e3251f2e6b5001f48263937902d920e0b1394be86e1
+    required: true
+    expected_nodes: [VCU, HVAC]
+    expected_messages: [VehicleStatus]
+    expected_frame_ids: [0x64]
+    expected_signals: [VehicleSpeed, IgnitionState]
+
+metadata:
+  owner: vehicle-integration
+  purpose: pre-calibration and pre-measurement topology gate

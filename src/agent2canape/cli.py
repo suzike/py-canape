@@ -392,6 +392,34 @@ def _measurement_stream_collect(
     return 0 if result["status"] == "completed" else 1
 
 
+def _network_topology_plan(path: str, *, deep: bool) -> int:
+    from .topology import NetworkTopologyManifest
+
+    result = NetworkTopologyManifest.load(path).plan(deep=deep)
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0 if result["passed"] else 1
+
+
+def _network_topology_audit(
+    project: str,
+    manifest_file: str,
+    *,
+    deep: bool,
+    snapshot_output: str | None,
+) -> int:
+    from .topology import CANapeTopologyAuditor, NetworkTopologyManifest
+
+    with CANape() as canape:
+        canape.open(project)
+        auditor = CANapeTopologyAuditor(canape)
+        result = auditor.audit(NetworkTopologyManifest.load(manifest_file), deep=deep)
+        if snapshot_output:
+            saved = auditor.capture().save(snapshot_output)
+            result["snapshot_output"] = str(saved)
+    print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
+    return 0 if result["passed"] else 1
+
+
 def _ai_toolkit(approval_file: str | None = None) -> CANapeAIToolkit:
     return CANapeAIToolkit(CANape(), approvals=ApprovalStore(approval_file))
 
@@ -653,6 +681,20 @@ def main(argv: list[str] | None = None) -> int:
     stream_collect.add_argument("--max-part-bytes", type=int, default=67108864)
     stream_collect.add_argument("--max-parts", type=int, default=100)
     stream_collect.add_argument("--flush-every", type=int, default=1)
+    topology_plan = subparsers.add_parser(
+        "network-topology-plan",
+        help="校验网络、设备、通道、数据库资产和可选 DBC/A2L 语义",
+    )
+    topology_plan.add_argument("manifest", type=str)
+    topology_plan.add_argument("--deep", action="store_true")
+    topology_audit = subparsers.add_parser(
+        "network-topology-audit",
+        help="只读打开 CANape 工程并审计期望/实际拓扑漂移",
+    )
+    topology_audit.add_argument("project", type=str)
+    topology_audit.add_argument("manifest", type=str)
+    topology_audit.add_argument("--deep", action="store_true")
+    topology_audit.add_argument("--snapshot-output", type=str)
     context_validate = subparsers.add_parser(
         "context-validate",
         help="验证 AI 工程对象、别名、单位和范围上下文",
@@ -758,6 +800,15 @@ def main(argv: list[str] | None = None) -> int:
             max_part_bytes=args.max_part_bytes,
             max_parts=args.max_parts,
             flush_every=args.flush_every,
+        )
+    if args.command == "network-topology-plan":
+        return _network_topology_plan(args.manifest, deep=args.deep)
+    if args.command == "network-topology-audit":
+        return _network_topology_audit(
+            args.project,
+            args.manifest,
+            deep=args.deep,
+            snapshot_output=args.snapshot_output,
         )
     if args.command == "context-validate":
         return _engineering_context_validate(args.path)

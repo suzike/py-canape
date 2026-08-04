@@ -1,6 +1,6 @@
 """Vector CANape 的 Python COM 控制接口。"""
 
-__version__ = "3.9.0"
+__version__ = "3.10.0"
 
 from .ai_tools import (
     AIActionPlan,
@@ -151,6 +151,14 @@ from .streaming import (
     MeasurementSubscriptionSpec,
     RotatingMeasurementWriter,
 )
+from .topology import (
+    CANapeTopologyAuditor,
+    DatabaseTopologySpec,
+    DeviceTopologySpec,
+    NetworkTopologyManifest,
+    NetworkTopologySnapshot,
+    NetworkTopologySpec,
+)
 from .workflow import StepResult, WorkflowEngine, WorkflowResult
 
 __all__ = [
@@ -288,4 +296,10 @@ __all__ = [
     "BoundedMeasurementBuffer",
     "RotatingMeasurementWriter",
     "MeasurementStreamSubscription",
+    "NetworkTopologySpec",
+    "DeviceTopologySpec",
+    "DatabaseTopologySpec",
+    "NetworkTopologyManifest",
+    "NetworkTopologySnapshot",
+    "CANapeTopologyAuditor",
 ]

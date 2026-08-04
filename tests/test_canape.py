@@ -167,6 +167,7 @@ def make_fake_app():
         Name="CAN1",
         IsActivate=False,
     )
+    device.NetWork = network
     network.Activate = lambda active: setattr(network, "IsActivate", active)
     script = SimpleNamespace(
         Name="Smoke",
@@ -309,6 +310,10 @@ class CANapeTests(unittest.TestCase):
         value, timestamp = self.canape.read_measurement_channel("ECU", "10ms", "VehicleSpeed")
         self.assertEqual(value, 42.5)
         self.assertEqual(timestamp, 100)
+        topology = self.canape.get_network_topology()
+        self.assertEqual(topology["devices"][0]["network"], "CAN1")
+        self.assertEqual(topology["devices"][0]["databases"], ["ecu.a2l"])
+        self.assertEqual(topology["networks"][0]["name"], "CAN1")
 
     def test_device_online_offline(self):
         self.canape.set_device_online("ECU")

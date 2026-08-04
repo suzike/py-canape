@@ -598,6 +598,48 @@ class CANape:
         databases = self.get_device(device).Databases
         return [str(database.Name) for database in _iter_collection(databases)]
 
+    def get_device_topology(self, device: str | int) -> dict[str, Any]:
+        """读取设备与通道、网络和数据库的只读拓扑摘要。"""
+        target = self.get_device(device)
+        info = self._device_info(target)
+        network_name = ""
+        try:
+            network = target.NetWork
+            network_name = str(getattr(network, "Name", network) or "")
+        except Exception:
+            # CANape 1.9 的 IDevice2 才暴露 NetWork；旧驱动或接口可能不可用。
+            network_name = ""
+        return {
+            "name": info.name,
+            "driver_type": info.driver_type,
+            "channel": info.channel,
+            "online": info.online,
+            "database_filename": info.database_filename,
+            "databases": self.list_device_databases(device),
+            "network": network_name,
+        }
+
+    def get_network_topology(self) -> dict[str, Any]:
+        """返回 CANape COM 当前可见的网络和设备拓扑；不猜测总线类型或波特率。"""
+        return {
+            "networks": self.list_networks(),
+            "devices": [
+                self.get_device_topology(device.name) for device in self.list_devices()
+            ],
+            "com_visible_fields": {
+                "network": ["name", "active"],
+                "device": [
+                    "name",
+                    "driver_type",
+                    "channel",
+                    "online",
+                    "network",
+                    "database_filename",
+                    "databases",
+                ],
+            },
+        }
+
     # 测量任务与信号
     def list_tasks(self, device: str | int) -> list[str]:
         tasks = self.get_device(device).Tasks

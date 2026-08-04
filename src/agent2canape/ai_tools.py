@@ -28,6 +28,7 @@ from .streaming import (
     MeasurementSubscriptionSpec,
     RotatingMeasurementWriter,
 )
+from .topology import CANapeTopologyAuditor, NetworkTopologyManifest
 
 
 def _now() -> datetime:
@@ -511,6 +512,14 @@ class EngineeringCommandPlanner:
         (("刷写状态", "flash status"), "flash_state"),
         (("停止刷写", "stop flash"), "flash_stop"),
         (("网络清单", "list network"), "network_list"),
+        (
+            ("网络拓扑规划", "拓扑清单校验", "network topology plan"),
+            "network_topology_plan",
+        ),
+        (
+            ("网络拓扑审计", "通道数据库一致性", "network topology audit"),
+            "network_topology_audit",
+        ),
         (("激活网络", "activate network"), "network_configure"),
         (("打开项目", "open project"), "project_open"),
         (("项目信息", "project info"), "project_info"),
@@ -1187,6 +1196,24 @@ class CANapeAIToolkit:
         self._connected()
         return self.canape.list_networks()
 
+    @staticmethod
+    def _network_topology_plan(
+        manifest_file: str,
+        deep: bool = False,
+    ) -> dict[str, Any]:
+        return NetworkTopologyManifest.load(manifest_file).plan(deep=deep)
+
+    def _network_topology_audit(
+        self,
+        manifest_file: str,
+        deep: bool = False,
+    ) -> dict[str, Any]:
+        self._connected()
+        return CANapeTopologyAuditor(self.canape).audit(
+            NetworkTopologyManifest.load(manifest_file),
+            deep=deep,
+        )
+
     def _network_configure(self, network: str, active: bool) -> dict[str, Any]:
         self._connected()
         return self.canape.configure_network(network, active=active)
@@ -1600,6 +1627,26 @@ class CANapeAIToolkit:
                 _schema({}),
                 ToolRisk.READ_ONLY,
                 self._network_list,
+            ),
+            AIToolSpec(
+                "network_topology_plan",
+                "校验网络、设备、通道、数据库引用、哈希和可选 DBC/A2L 语义。",
+                _schema(
+                    {"manifest_file": "string", "deep": "boolean"},
+                    required=("manifest_file",),
+                ),
+                ToolRisk.READ_ONLY,
+                self._network_topology_plan,
+            ),
+            AIToolSpec(
+                "network_topology_audit",
+                "只读捕获 CANape 拓扑并审计网络、设备、通道和数据库绑定漂移。",
+                _schema(
+                    {"manifest_file": "string", "deep": "boolean"},
+                    required=("manifest_file",),
+                ),
+                ToolRisk.READ_ONLY,
+                self._network_topology_audit,
             ),
             AIToolSpec(
                 "network_configure",

@@ -40,6 +40,7 @@ _CANAPE_RUNTIME_TOOLS = {
     "flash_stop",
     "flash_state",
     "network_list",
+    "network_topology_audit",
     "network_configure",
 }
 

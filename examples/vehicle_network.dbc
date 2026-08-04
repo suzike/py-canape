@@ -1,0 +1,11 @@
+VERSION "Agent2Canape example"
+
+NS_ :
+
+BS_:
+
+BU_: VCU HVAC
+
+BO_ 100 VehicleStatus: 8 VCU
+ SG_ VehicleSpeed : 0|16@1+ (0.1,0) [0|250] "km/h" HVAC
+ SG_ IgnitionState : 16|8@1+ (1,0) [0|3] "" HVAC

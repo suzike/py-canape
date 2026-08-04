@@ -160,6 +160,29 @@ class FakeAICANape:
     def read_task_next_sample(self, device, task):
         return self.read_task_current_values(device, task)
 
+    def list_networks(self):
+        return [{"name": "CAN1", "active": True}]
+
+    def get_network_topology(self):
+        return {
+            "networks": self.list_networks(),
+            "devices": [
+                {
+                    "name": "ECU",
+                    "driver_type": "XCP",
+                    "channel": 1,
+                    "online": self.online,
+                    "network": "CAN1",
+                    "database_filename": "ecu.a2l",
+                    "databases": ["ecu.a2l"],
+                }
+            ],
+            "com_visible_fields": {
+                "network": ["name", "active"],
+                "device": ["name", "channel", "network", "databases"],
+            },
+        }
+
     def read_memory(self, device, address, size, *, address_extension=0):
         return tuple(range(size))
 
@@ -582,6 +605,42 @@ max_age_seconds: 1
         self.assertTrue(executed["executed"])
         self.assertEqual(executed["result"]["evidence"]["total_samples"], 2)
         self.assertTrue((Path(self.temporary.name) / "ai-stream.part0001.jsonl").is_file())
+
+    def test_network_topology_plan_audit_and_natural_language(self):
+        topology_path = Path(self.temporary.name) / "topology.yaml"
+        topology_path.write_text(
+            """name: ai-topology
+allow_unexpected_networks: false
+allow_unexpected_devices: false
+networks:
+  - {name: CAN1, bus_type: can, expected_active: true}
+devices:
+  - name: ECU
+    network: CAN1
+    channel: 1
+    driver_type: XCP
+    expected_online: false
+""",
+            encoding="utf-8",
+        )
+
+        plan = self.toolkit.registry.invoke(
+            "network_topology_plan",
+            {"manifest_file": str(topology_path)},
+        )
+        audit = self.toolkit.registry.invoke(
+            "network_topology_audit",
+            {"manifest_file": str(topology_path)},
+        )
+        natural = self.toolkit.planner.plan(
+            "执行网络拓扑审计",
+            context={"manifest_file": str(topology_path)},
+        )
+
+        self.assertTrue(plan["result"]["passed"])
+        self.assertTrue(audit["result"]["passed"])
+        self.assertEqual(len(audit["result"]["snapshot_digest"]), 64)
+        self.assertEqual(natural["tool"], "network_topology_audit")
 
     def test_ai_tools_expose_calibration_operations_and_pareto(self):
         change_set = CalibrationChangeSet(

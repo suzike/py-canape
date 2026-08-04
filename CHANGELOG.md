@@ -1,5 +1,23 @@
 # 变更记录
 
+## 3.10.0 - 2026-08-04
+
+- 新增网络拓扑清单，统一描述 CAN/CAN FD/LIN/FlexRay/Ethernet 网络、ECU、通道、驱动、
+  在线态和数据库绑定；
+- 新增数据库资产存在性、相对路径、SHA-256 和引用完整性校验；
+- 新增 DBC 节点、报文、帧 ID、信号语义审计，以及 A2L 对象和目录引用审计；
+- DBC/A2L 深度解析改为 30 秒受控隔离子进程，Windows 标准输入输出使用显式 UTF-8
+  二进制协议，防止第三方解析器阻塞 MCP 工作线程；
+- 新增 CANape 实时拓扑快照，读取网络名称/激活态、设备通道/驱动/在线态/网络和数据库，
+  并生成期望/实际差异和稳定摘要；
+- 明确 CANape 1.9 COM 网络对象不提供通用总线类型和波特率读取，相关值只来自受控清单；
+- AI/MCP 新增 `network_topology_plan` 和 `network_topology_audit` 两个只读工具，当前共
+  43 个工具；
+- CLI 新增 `network-topology-plan` 和 `network-topology-audit`，提供 DBC、拓扑清单、
+  工程指南和非 Mermaid SVG 配图；
+- 新增资产、DBC 语义、哈希漂移、相对路径、实时差异、快照、CLI、AI/MCP 和 COM
+  设备网络测试，累计 171 项自动化测试。
+
 ## 3.9.0 - 2026-08-04
 
 - 新增 `MeasurementSubscriptionSpec`，明确任务通道、读取模式、时间戳比例、期望周期、
