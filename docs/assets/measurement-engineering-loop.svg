@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="480" viewBox="0 0 1200 480" role="img" aria-labelledby="title desc">
+  <title id="title">Agent2Canape 测量工程闭环</title>
+  <desc id="desc">从测量清单、DAQ预算、审批应用、CANape采集到MDF验收和证据归档的闭环</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#071a2b"/><stop offset="1" stop-color="#13264a"/></linearGradient>
+    <filter id="shadow"><feDropShadow dx="0" dy="8" stdDeviation="8" flood-opacity=".28"/></filter>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#67e8f9"/></marker>
+  </defs>
+  <rect width="1200" height="480" rx="28" fill="url(#bg)"/>
+  <text x="60" y="68" fill="#f8fafc" font-family="Segoe UI,Arial,sans-serif" font-size="32" font-weight="700">测量清单驱动的 CANape 工程闭环</text>
+  <text x="60" y="101" fill="#a5c8e8" font-family="Segoe UI,Arial,sans-serif" font-size="17">通用 ECU 标定 · 整车排查 · 可恢复配置 · 可验证证据</text>
+  <g font-family="Segoe UI,Arial,sans-serif" filter="url(#shadow)">
+    <g transform="translate(55 155)"><rect width="190" height="175" rx="20" fill="#103c48" stroke="#2dd4bf" stroke-width="2"/><text x="95" y="45" text-anchor="middle" fill="#ccfbf1" font-size="21" font-weight="700">测量清单</text><text x="95" y="82" text-anchor="middle" fill="#99f6e4" font-size="16">信号 / 任务 / 优先级</text><text x="95" y="111" text-anchor="middle" fill="#99f6e4" font-size="16">记录器 / 触发窗口</text><text x="95" y="140" text-anchor="middle" fill="#99f6e4" font-size="16">版本与责任人</text></g>
+    <g transform="translate(285 155)"><rect width="190" height="175" rx="20" fill="#3b2d16" stroke="#f59e0b" stroke-width="2"/><text x="95" y="45" text-anchor="middle" fill="#fef3c7" font-size="21" font-weight="700">资源预算</text><text x="95" y="82" text-anchor="middle" fill="#fde68a" font-size="16">DAQ 字节与利用率</text><text x="95" y="111" text-anchor="middle" fill="#fde68a" font-size="16">FIFO 与采样周期</text><text x="95" y="140" text-anchor="middle" fill="#fde68a" font-size="16">安全降级候选</text></g>
+    <g transform="translate(515 155)"><rect width="190" height="175" rx="20" fill="#29254d" stroke="#a78bfa" stroke-width="2"/><text x="95" y="45" text-anchor="middle" fill="#ede9fe" font-size="21" font-weight="700">审批与事务</text><text x="95" y="82" text-anchor="middle" fill="#ddd6fe" font-size="16">实时快照摘要</text><text x="95" y="111" text-anchor="middle" fill="#ddd6fe" font-size="16">外部工程师审批</text><text x="95" y="140" text-anchor="middle" fill="#ddd6fe" font-size="16">失败自动回滚</text></g>
+    <g transform="translate(745 155)"><rect width="190" height="175" rx="20" fill="#123b31" stroke="#34d399" stroke-width="2"/><text x="95" y="45" text-anchor="middle" fill="#d1fae5" font-size="21" font-weight="700">CANape 采集</text><text x="95" y="82" text-anchor="middle" fill="#a7f3d0" font-size="16">通道与记录器</text><text x="95" y="111" text-anchor="middle" fill="#a7f3d0" font-size="16">掉线重连恢复</text><text x="95" y="140" text-anchor="middle" fill="#a7f3d0" font-size="16">MDF / MF4</text></g>
+    <g transform="translate(975 155)"><rect width="170" height="175" rx="20" fill="#17354d" stroke="#38bdf8" stroke-width="2"/><text x="85" y="45" text-anchor="middle" fill="#e0f2fe" font-size="21" font-weight="700">产物验收</text><text x="85" y="82" text-anchor="middle" fill="#bae6fd" font-size="16">信号与时长</text><text x="85" y="111" text-anchor="middle" fill="#bae6fd" font-size="16">流式 SHA-256</text><text x="85" y="140" text-anchor="middle" fill="#bae6fd" font-size="16">证据归档</text></g>
+  </g>
+  <g stroke="#67e8f9" stroke-width="3" fill="none" marker-end="url(#arrow)"><path d="M245 242 H278"/><path d="M475 242 H508"/><path d="M705 242 H738"/><path d="M935 242 H968"/></g>
+  <path d="M1060 346 C1060 420 150 420 150 346" fill="none" stroke="#60a5fa" stroke-width="2.5" stroke-dasharray="8 7" marker-end="url(#arrow)"/>
+  <text x="600" y="445" text-anchor="middle" fill="#93c5fd" font-family="Segoe UI,Arial,sans-serif" font-size="16">验收结果回到下一轮清单、标定实验和问题排查基线</text>
+</svg>

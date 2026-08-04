@@ -9,7 +9,7 @@
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![CANape](https://img.shields.io/badge/CANape-17.x-0EA5E9)](#canape-17-兼容性)
 [![Capabilities](https://img.shields.io/badge/Capabilities-140%2F140-14B8A6)](./CAPABILITIES.md)
-[![Tests](https://img.shields.io/badge/Tests-145%20passed-22C55E)](#质量与验证)
+[![Tests](https://img.shields.io/badge/Tests-155%20passed-22C55E)](#质量与验证)
 [![License](https://img.shields.io/badge/License-MIT-F59E0B)](./LICENSE)
 
 **ECU 标定 · AI Agent · 在线测量 · 离线分析 · 安全门禁 · 工程闭环**
@@ -41,6 +41,7 @@ CANape 项目、ECU 在线状态、MDF/BLF 数据、A2L/DBC 数据库、标定�
 | 证据整理耗时 | 自动生成 Word、Excel、PDF、HTML 和完整证据包 |
 | 专业扩展成本高 | 动力、底盘、车身、三电、热管理、ADAS 领域插件 |
 | AI 只能给建议 | 本地 MCP、结构化 Schema、外部审批和自然语言工程计划 |
+| 测量配置易漂移 | 版本化清单、DAQ/FIFO 预算、事务回滚、重连恢复和 MDF 验收 |
 
 <img src="./docs/assets/engineering-loop.svg" alt="整车问题排查工程闭环" width="100%">
 
@@ -108,6 +109,24 @@ CDFX/DCM/PAR、A2L 语义目录、身份校验和并发版本基线详见
 [标定目标适配指南](./docs/CALIBRATION_TARGETS.md)。
 二维物理约束、DOE 质量和安全代理优化见
 [标定决策设计指南](./docs/CALIBRATION_DESIGN.md)。
+
+## 测量工程闭环
+
+<img src="./docs/assets/measurement-engineering-loop.svg" alt="测量工程闭环" width="100%">
+
+测量清单把设备、任务、信号优先级、DAQ 容量、FIFO、记录器和触发窗口形成一个可审查
+基线。应用前保存实时 CANape 快照，失败自动回滚；设备重连后可重建通道、记录器和原运行
+状态。MDF/MF4 产物支持大小、流式 SHA-256、期望信号和最短时长验收。
+
+```powershell
+agent2canape measurement-plan examples\measurement_manifest.yaml
+agent2canape measurement-verify build\vehicle-measurement.mf4 --deep `
+  --expected-channel VehicleSpeed --minimum-duration-seconds 60
+```
+
+CANape 1.9 COM 没有通用触发配置接口，因此触发表达式需在受控 CNA 或项目脚本中预配置；
+Agent2Canape 不虚构 COM 方法，只负责引用、窗口/FIFO 预算和产物闭环。详见
+[测量工程闭环指南](./docs/MEASUREMENT_ENGINEERING.md)。
 
 ## Codex / Claude Code 自然语言驱动
 
@@ -185,6 +204,7 @@ agent2canape capabilities
 | 模块 | 主要职责 |
 |---|---|
 | `CANape` | 会话、设备、测量、标定、记录器、网络、诊断和刷写 |
+| `Measurement*` | 测量清单、DAQ/FIFO 预算、事务应用、掉线恢复和 MDF/MF4 验收 |
 | `Calibration*` | 数据交换、物理约束、DOE 质量、目标适配、多 ECU、Pareto 和安全代理优化 |
 | `CANapeAIToolkit` | AI 工具 Schema、自然语言计划、审批摘要和安全调度 |
 | `MCP Server` | stdio 接口、会话限流、CANape 资源租约、摘要审计和运行状态 |
@@ -363,11 +383,11 @@ CANape 的 vMDM 附属进程可能在 `Quit` 后继续驻留。若短时间内�
 
 ```text
 Ruff                    All checks passed
-Pytest                  145 passed
+Pytest                  155 passed
 Capability contracts    140 / 140, unique and resolvable
 Dependency check        No broken requirements
 MDF / BLF / DBC         Real file round-trip passed
-MCP                     FastMCP discovery, runtime governance and audit passed
+MCP                     38 tools, discovery, approval, runtime governance and audit passed
 MCP clients             Codex model call + CANape read-only project call passed
 Workflow                Validate + Dry-run passed
 ```

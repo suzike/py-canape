@@ -45,6 +45,7 @@ Workflow Engine ---- Safety Policy ---- Audit Trail
 - `calibration_formats.py`：A2L 语义目录和 CDFX/DCM/PAR 标定数据交换；
 - `calibration_operations.py`：变更评审、存储层台账、DOE 恢复、多 ECU 事务和 Pareto；
 - `calibration_targets.py`：目标适配协议、RAM/ROM 持久化、掉线协调和分阶段多 ECU 补偿；
+- `measurement.py`：测量清单、DAQ/FIFO 预算、事务快照、重连恢复和 MDF/MF4 验收；
 - `ai_tools.py`：AI 工具 Schema、自然语言计划、跨进程审批和安全调度；
 - `mcp_server.py`：Codex、Claude Code 等客户端使用的本地 stdio MCP Server；
 - `assets.py`：环境清单、工程资产、版本哈希、预检、快照和恢复；
@@ -72,5 +73,8 @@ Workflow Engine ---- Safety Policy ---- Audit Trail
 | 代理优化探索到未知危险区域 | 安全指标置信界、外推距离和已观测候选去重 |
 | 写操作完成但响应前掉线 | 重连后回读目标层，协调已生效动作，不盲目重复写入 |
 | 多 ECU ROM 阶段失败 | RAM 屏障、ROM 分阶段提交和跨设备逆序补偿 |
+| 测量配置部分应用或设备掉线 | 快照回滚；重连后重建清单和原测量运行态 |
+| DAQ 或触发窗口超预算 | 规划阶段拒绝，并只列出非必需信号的降级候选 |
+| 录制文件缺失或证据不完整 | 大小、SHA-256、可选信号和时长验收失败 |
 | 报告生成失败 | 保留原始 JSON 审计和证据文件 |
 | 企业系统不可用 | 外部适配器失败不影响本地证据包 |

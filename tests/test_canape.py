@@ -152,7 +152,12 @@ def make_fake_app():
     device.Upload = lambda path: Path(path).write_bytes(b"hex")
     device.Download = lambda path: setattr(device, "Downloaded", Path(path).read_bytes())
     recorder = SimpleNamespace(
-        Name="Recorder1", State=1, Type=0, MDFFilename="", Pause=lambda paused: None
+        Name="Recorder1",
+        State=1,
+        Type=0,
+        MDFFilename="",
+        DataReduction=1,
+        Pause=lambda paused: None,
     )
     recorders = FakeCollection(recorder)
     recorders.Add = lambda name: recorder
@@ -412,6 +417,10 @@ class CANapeTests(unittest.TestCase):
 
     def test_recorder_network_script_and_logging(self):
         self.assertEqual(self.canape.get_selected_recorder().name, "Recorder1")
+        self.assertEqual(
+            self.canape.get_recorder_configuration("Recorder1")["data_reduction"],
+            1,
+        )
         self.assertEqual(self.canape.list_networks()[0]["name"], "CAN1")
         self.canape.activate_network("CAN1")
         self.assertTrue(self.canape.list_networks()[0]["active"])

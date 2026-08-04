@@ -1201,6 +1201,16 @@ class CANape:
             mdf_filename=str(recorder.MDFFilename),
         )
 
+    def get_recorder_configuration(self, recorder: str | int) -> dict[str, Any]:
+        target = _collection_item(self._require_application().Recorders, recorder)
+        return {
+            "name": str(target.Name),
+            "state": int(target.State),
+            "recorder_type": int(target.Type),
+            "mdf_filename": str(target.MDFFilename),
+            "data_reduction": int(target.DataReduction),
+        }
+
     def set_recorder_output_file(
         self, recorder: str | int, path: str | os.PathLike[str]
     ) -> None:

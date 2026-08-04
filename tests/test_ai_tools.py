@@ -26,6 +26,24 @@ class FakeAICANape:
         self.values = {"Gain": 1.0}
         self.measurement = False
         self.online = False
+        self.measurement_configuration = {
+            "sample_size": 4,
+            "fifo_size": 64,
+            "sync_mode": False,
+            "resume_mode": False,
+            "use_nan": False,
+        }
+        self.measurement_output_file = "baseline.mf4"
+        self.measurement_channels = {"ECU::10ms": ["Existing"]}
+        self.recorders = {
+            "Recorder1": {
+                "name": "Recorder1",
+                "state": 0,
+                "recorder_type": 1,
+                "mdf_filename": "baseline-recorder.mf4",
+                "data_reduction": 2,
+            }
+        }
 
     def connect(self):
         self.connected = True
@@ -95,6 +113,43 @@ class FakeAICANape:
 
     def get_measurement_state(self):
         return 2 if self.measurement else 0
+
+    def get_measurement_configuration(self):
+        return dict(self.measurement_configuration)
+
+    def configure_measurement(self, **values):
+        self.measurement_configuration.update(
+            {name: value for name, value in values.items() if value is not None}
+        )
+
+    def get_measurement_output_file(self):
+        return self.measurement_output_file
+
+    def set_measurement_output_file(self, path):
+        self.measurement_output_file = str(path)
+
+    def list_measurement_channels(self, device, task):
+        return list(self.measurement_channels.get(f"{device}::{task}", ()))
+
+    def configure_measurement_channels(self, device, task, channels, *, clear=True):
+        key = f"{device}::{task}"
+        if clear:
+            self.measurement_channels[key] = []
+        self.measurement_channels[key].extend(channels)
+        return list(self.measurement_channels[key])
+
+    def get_recorder_configuration(self, name):
+        return dict(self.recorders[name])
+
+    def set_recorder_output_file(self, name, path):
+        self.recorders[name]["mdf_filename"] = str(path)
+
+    def set_recorder_data_reduction(self, name, value):
+        self.recorders[name]["data_reduction"] = int(value)
+
+    def reconnect_device(self, device, *, download=False, restore_measurement=False):
+        self.measurement_channels["ECU::10ms"] = []
+        return True
 
     def read_memory(self, device, address, size, *, address_extension=0):
         return tuple(range(size))
@@ -422,6 +477,54 @@ class AIToolTests(unittest.TestCase):
     def test_measurement_state_serializes_integer_com_state(self):
         result = self.toolkit.registry.invoke("measurement_state")
         self.assertEqual(result["result"], {"state": 0, "running": False})
+
+    def test_measurement_manifest_tools_and_approval(self):
+        manifest_path = Path(self.temporary.name) / "measurement.yaml"
+        manifest_path.write_text(
+            """name: ai-measurement
+sample_size: 8
+fifo_size: 128
+measurement_output_file: ai-measurement.mf4
+channels:
+  - {device: ECU, task: 10ms, name: VehicleSpeed}
+task_limits:
+  - device: ECU
+    task: 10ms
+    sampling_time_seconds: 0.01
+    max_channels: 10
+    max_bytes_per_second: 5000
+    minimum_fifo_samples: 100
+recorders:
+  - {name: Recorder1, output_file: ai-recorder.mf4, data_reduction: 1}
+""",
+            encoding="utf-8",
+        )
+
+        plan = self.toolkit.registry.invoke(
+            "measurement_plan", {"manifest_file": str(manifest_path)}
+        )
+        self.assertTrue(plan["result"]["passed"])
+        planned = self.toolkit.registry.invoke(
+            "measurement_apply", {"manifest_file": str(manifest_path)}
+        )
+        self.assertEqual(planned["status"], "planned")
+        action_plan_id = planned["action_plan"]["id"]
+        self.store.approve(action_plan_id, "measurement-engineer")
+        executed = self.toolkit.registry.invoke(
+            "measurement_apply",
+            {"manifest_file": str(manifest_path)},
+            dry_run=False,
+            action_plan_id=action_plan_id,
+        )
+        self.assertTrue(executed["executed"])
+        self.assertEqual(
+            self.canape.measurement_channels["ECU::10ms"], ["VehicleSpeed"]
+        )
+        self.assertEqual(self.canape.measurement_configuration["fifo_size"], 128)
+        natural = self.toolkit.planner.plan(
+            "请执行测量清单规划", context={"manifest_file": str(manifest_path)}
+        )
+        self.assertEqual(natural["tool"], "measurement_plan")
 
     def test_ai_tools_expose_calibration_operations_and_pareto(self):
         change_set = CalibrationChangeSet(

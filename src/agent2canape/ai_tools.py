@@ -18,6 +18,11 @@ from typing import Any
 
 from .engineering_context import EngineeringContextResolver
 from .errors import SafetyViolationError
+from .measurement import (
+    MeasurementArtifactVerifier,
+    MeasurementManifest,
+    MeasurementSessionManager,
+)
 
 
 def _now() -> datetime:
@@ -462,6 +467,22 @@ class EngineeringCommandPlanner:
         (("启动测量", "start measurement"), "measurement_start"),
         (("停止测量", "stop measurement"), "measurement_stop"),
         (("测量状态", "measurement status"), "measurement_state"),
+        (
+            ("测量清单规划", "daq 预算", "measurement manifest plan"),
+            "measurement_plan",
+        ),
+        (
+            ("应用测量清单", "apply measurement manifest"),
+            "measurement_apply",
+        ),
+        (
+            ("验证测量文件", "校验测量产物", "verify measurement artifact"),
+            "measurement_artifact_verify",
+        ),
+        (
+            ("重连恢复测量", "reconnect and restore measurement"),
+            "measurement_reconnect_restore",
+        ),
         (("设备上线", "go online"), "device_online"),
         (("设备下线", "go offline"), "device_offline"),
         (("读取内存", "read memory"), "memory_read"),
@@ -886,6 +907,65 @@ class CANapeAIToolkit:
             "running": bool(self.canape.is_measurement_running()),
         }
 
+    @staticmethod
+    def _measurement_plan(manifest_file: str) -> dict[str, Any]:
+        return MeasurementManifest.load(manifest_file).plan()
+
+    @staticmethod
+    def _measurement_artifact_verify(
+        path: str,
+        minimum_bytes: int = 1,
+        expected_channels: list[str] | None = None,
+        minimum_duration_seconds: float = 0.0,
+        deep: bool = False,
+    ) -> dict[str, Any]:
+        return MeasurementArtifactVerifier.verify(
+            path,
+            minimum_bytes=minimum_bytes,
+            expected_channels=tuple(expected_channels or ()),
+            minimum_duration_seconds=minimum_duration_seconds,
+            deep=deep,
+        )
+
+    def _measurement_apply_preview(self, manifest_file: str) -> dict[str, Any]:
+        self._connected()
+        return MeasurementSessionManager(self.canape).preview(
+            MeasurementManifest.load(manifest_file)
+        )
+
+    def _measurement_apply(self, manifest_file: str) -> dict[str, Any]:
+        self._connected()
+        return MeasurementSessionManager(self.canape).apply(
+            MeasurementManifest.load(manifest_file)
+        )
+
+    def _measurement_reconnect_restore_preview(
+        self,
+        device: str,
+        manifest_file: str,
+        download: bool = False,
+    ) -> dict[str, Any]:
+        preview = self._measurement_apply_preview(manifest_file)
+        return {
+            **preview,
+            "operation": "reconnect_and_restore_measurement",
+            "device": device,
+            "download": download,
+        }
+
+    def _measurement_reconnect_restore(
+        self,
+        device: str,
+        manifest_file: str,
+        download: bool = False,
+    ) -> dict[str, Any]:
+        self._connected()
+        return MeasurementSessionManager(self.canape).reconnect_and_restore(
+            device,
+            MeasurementManifest.load(manifest_file),
+            download=download,
+        )
+
     def _device_online(self, device: str, download: bool = False) -> dict[str, Any]:
         self._connected()
         self.canape.set_device_online(device, download=download)
@@ -1213,6 +1293,52 @@ class CANapeAIToolkit:
                 _schema({}),
                 ToolRisk.READ_ONLY,
                 self._measurement_state,
+            ),
+            AIToolSpec(
+                "measurement_plan",
+                "校验测量清单、DAQ 负载、FIFO、记录器和触发窗口预算。",
+                _schema({"manifest_file": "string"}, required=("manifest_file",)),
+                ToolRisk.READ_ONLY,
+                self._measurement_plan,
+            ),
+            AIToolSpec(
+                "measurement_artifact_verify",
+                "校验 MDF/MF4 文件大小、哈希以及可选的信号和时长。",
+                _schema(
+                    {
+                        "path": "string",
+                        "minimum_bytes": "integer",
+                        "expected_channels": "array",
+                        "minimum_duration_seconds": "number",
+                        "deep": "boolean",
+                    },
+                    required=("path",),
+                ),
+                ToolRisk.READ_ONLY,
+                self._measurement_artifact_verify,
+            ),
+            AIToolSpec(
+                "measurement_apply",
+                "事务应用测量清单，失败时恢复通道、记录器和测量配置快照。",
+                _schema({"manifest_file": "string"}, required=("manifest_file",)),
+                ToolRisk.MEASUREMENT_CONTROL,
+                self._measurement_apply,
+                self._measurement_apply_preview,
+            ),
+            AIToolSpec(
+                "measurement_reconnect_restore",
+                "重连设备并按清单恢复测量配置和原运行状态。",
+                _schema(
+                    {
+                        "device": "string",
+                        "manifest_file": "string",
+                        "download": "boolean",
+                    },
+                    required=("device", "manifest_file"),
+                ),
+                ToolRisk.MEASUREMENT_CONTROL,
+                self._measurement_reconnect_restore,
+                self._measurement_reconnect_restore_preview,
             ),
             AIToolSpec(
                 "memory_read",

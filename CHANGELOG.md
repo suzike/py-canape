@@ -1,5 +1,19 @@
 # 变更记录
 
+## 3.8.0 - 2026-08-04
+
+- 新增通用测量清单，描述设备、任务、信号、采样率、优先级、记录器、触发窗口和输出；
+- 新增 DAQ 字节/利用率、通道数、任务周期和 FIFO 预算，超限时仅给出非必需信号降级候选；
+- 新增测量配置实时快照、事务应用与失败回滚，并支持设备重连后恢复清单和原运行状态；
+- 新增 MDF/MF4 产物验收，支持流式 SHA-256、最小大小、信号存在性和最短时长；
+- AI/MCP 新增 `measurement_plan`、`measurement_artifact_verify`、`measurement_apply` 和
+  `measurement_reconnect_restore`，写动作绑定实时前置摘要并要求外部审批；
+- CLI 新增 `measurement-plan` 和 `measurement-verify`，并提供通用清单、工程指南和非
+  Mermaid 测量闭环配图；
+- 明确 CANape 1.9 COM 不提供通用触发配置接口，触发器由受控 CNA 或项目脚本预配置；
+- 新增清单预算、回滚、重连、真实 MDF、CLI、AI 审批和 COM 记录器测试，累计 155 项
+  自动化测试。
+
 ## 3.7.0 - 2026-08-04
 
 - A2L 语义目录新增 `COMPU_TAB`、`COMPU_VTAB`、`COMPU_VTAB_RANGE`，支持数值表、

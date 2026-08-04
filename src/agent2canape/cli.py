@@ -309,6 +309,35 @@ def _calibration_safe_suggest(path: str) -> int:
     return 0 if result["passed"] else 1
 
 
+def _measurement_plan(path: str) -> int:
+    from .measurement import MeasurementManifest
+
+    result = MeasurementManifest.load(path).plan()
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0 if result["passed"] else 1
+
+
+def _measurement_verify(
+    path: str,
+    *,
+    minimum_bytes: int,
+    expected_channels: list[str],
+    minimum_duration_seconds: float,
+    deep: bool,
+) -> int:
+    from .measurement import MeasurementArtifactVerifier
+
+    result = MeasurementArtifactVerifier.verify(
+        path,
+        minimum_bytes=minimum_bytes,
+        expected_channels=tuple(expected_channels),
+        minimum_duration_seconds=minimum_duration_seconds,
+        deep=deep,
+    )
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0 if result["passed"] else 1
+
+
 def _ai_toolkit(approval_file: str | None = None) -> CANapeAIToolkit:
     return CANapeAIToolkit(CANape(), approvals=ApprovalStore(approval_file))
 
@@ -531,6 +560,29 @@ def main(argv: list[str] | None = None) -> int:
         help="使用安全高斯过程代理模型推荐下一组标定候选",
     )
     safe_suggest.add_argument("spec", type=str)
+    measurement_plan = subparsers.add_parser(
+        "measurement-plan",
+        help="校验测量清单、DAQ/FIFO 预算和触发录制约束",
+    )
+    measurement_plan.add_argument("manifest", type=str)
+    measurement_verify = subparsers.add_parser(
+        "measurement-verify",
+        help="校验 MDF/MF4 录制产物的大小、哈希、信号和时长",
+    )
+    measurement_verify.add_argument("path", type=str)
+    measurement_verify.add_argument("--minimum-bytes", type=int, default=1)
+    measurement_verify.add_argument(
+        "--expected-channel",
+        action="append",
+        default=[],
+        dest="expected_channels",
+    )
+    measurement_verify.add_argument(
+        "--minimum-duration-seconds",
+        type=float,
+        default=0.0,
+    )
+    measurement_verify.add_argument("--deep", action="store_true")
     context_validate = subparsers.add_parser(
         "context-validate",
         help="验证 AI 工程对象、别名、单位和范围上下文",
@@ -615,6 +667,16 @@ def main(argv: list[str] | None = None) -> int:
         return _calibration_experiment_report(args.path, args.output)
     if args.command == "calibration-safe-suggest":
         return _calibration_safe_suggest(args.spec)
+    if args.command == "measurement-plan":
+        return _measurement_plan(args.manifest)
+    if args.command == "measurement-verify":
+        return _measurement_verify(
+            args.path,
+            minimum_bytes=args.minimum_bytes,
+            expected_channels=args.expected_channels,
+            minimum_duration_seconds=args.minimum_duration_seconds,
+            deep=args.deep,
+        )
     if args.command == "context-validate":
         return _engineering_context_validate(args.path)
     if args.command == "ai-tools":

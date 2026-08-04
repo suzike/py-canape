@@ -1,0 +1,55 @@
+name: vehicle-measurement-baseline
+sample_size: 8
+fifo_size: 2048
+sync_mode: true
+resume_mode: true
+use_nan: true
+measurement_output_file: build/vehicle-measurement.mf4
+require_task_limits: true
+start_after_apply: false
+
+task_limits:
+  - device: ECU
+    task: 10ms
+    sampling_time_seconds: 0.01
+    max_channels: 64
+    max_bytes_per_second: 20000
+    max_utilization: 0.8
+    minimum_fifo_samples: 1500
+    event: 1
+
+channels:
+  - device: ECU
+    task: 10ms
+    name: VehicleSpeed
+    required: true
+    priority: critical
+  - device: ECU
+    task: 10ms
+    name: EngineSpeed
+    required: true
+    priority: high
+  - device: ECU
+    task: 10ms
+    name: ControlDeviation
+    required: false
+    priority: low
+
+recorders:
+  - name: Recorder1
+    output_file: build/vehicle-trigger.mf4
+    data_reduction: 1
+
+# CANape 1.9 COM 没有通用触发配置接口。expression 必须在受控 CNA 或项目脚本中
+# 建立同名触发器；Agent2Canape 负责预算、引用和录制产物闭环校验。
+triggers:
+  - name: control-deviation-high
+    recorder: Recorder1
+    expression: abs(ControlDeviation) > 10
+    pre_trigger_seconds: 5
+    post_trigger_seconds: 10
+    holdoff_seconds: 30
+
+metadata:
+  owner: measurement-engineering
+  purpose: generic vehicle investigation and calibration evidence

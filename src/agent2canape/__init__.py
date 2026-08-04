@@ -1,6 +1,6 @@
 """Vector CANape 的 Python COM 控制接口。"""
 
-__version__ = "3.7.0"
+__version__ = "3.8.0"
 
 from .ai_tools import (
     AIActionPlan,
@@ -113,6 +113,16 @@ from .mcp_runtime import (
     MCPRuntimeGovernor,
     ResourceLease,
     RollingRateLimiter,
+)
+from .measurement import (
+    MeasurementArtifactVerifier,
+    MeasurementChannelSpec,
+    MeasurementManifest,
+    MeasurementRecorderSpec,
+    MeasurementSessionManager,
+    MeasurementSessionSnapshot,
+    MeasurementTaskLimit,
+    MeasurementTriggerSpec,
 )
 from .models import (
     CalibrationObjectInfo,
@@ -258,4 +268,12 @@ __all__ = [
     "RollingRateLimiter",
     "MCPAuditJournal",
     "MCPRuntimeGovernor",
+    "MeasurementChannelSpec",
+    "MeasurementTaskLimit",
+    "MeasurementTriggerSpec",
+    "MeasurementRecorderSpec",
+    "MeasurementManifest",
+    "MeasurementSessionSnapshot",
+    "MeasurementSessionManager",
+    "MeasurementArtifactVerifier",
 ]
