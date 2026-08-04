@@ -10,7 +10,10 @@ from pathlib import Path
 from unittest.mock import patch
 
 from agent2canape.cli import main
-from agent2canape.mcp_diagnostics import run_mcp_diagnostics
+from agent2canape.mcp_diagnostics import (
+    MCPDiagnosticReport,
+    run_mcp_diagnostics,
+)
 
 
 class FakeCANape:
@@ -215,6 +218,39 @@ class MCPDiagnosticsTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         self.assertTrue(result["passed"])
         self.assertEqual(result["summary"]["failed"], 0)
+
+    def test_cli_mcp_doctor_keeps_json_clean_when_runtime_prints_noise(self):
+        report = MCPDiagnosticReport(
+            passed=True,
+            package_version="test",
+            platform="test",
+            checks=(),
+        )
+
+        def noisy_diagnostics(**kwargs):
+            del kwargs
+            print("COM runtime noise")
+            return report
+
+        output = StringIO()
+        with (
+            patch(
+                "agent2canape.mcp_diagnostics.run_mcp_diagnostics",
+                side_effect=noisy_diagnostics,
+            ),
+            redirect_stdout(output),
+        ):
+            exit_code = main(["mcp-doctor", "--skip-clients"])
+
+        result = json.loads(output.getvalue())
+        self.assertEqual(exit_code, 0)
+        self.assertNotIn("COM runtime noise", output.getvalue())
+        check = next(
+            item
+            for item in result["checks"]
+            if item["name"] == "runtime:out_of_band_output"
+        )
+        self.assertEqual(check["evidence"]["suppressed_line_count"], 1)
 
 
 if __name__ == "__main__":

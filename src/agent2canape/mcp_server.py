@@ -63,6 +63,8 @@ def create_server(
             "面向 ECU 标定、测量、诊断和刷写的 CANape 工程工具。"
             "任何非只读工具必须先 dry_run 生成 Action Plan，"
             "由外部用户审批后使用同一参数和 action_plan_id 执行。"
+            "标定写入计划包含实时当前值、目标值、差异、校验与恢复快照；"
+            "执行前置状态变化时必须重新规划。"
         ),
     )
 
@@ -76,7 +78,7 @@ def create_server(
         request: str,
         context: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """将自然语言工程请求转换为候选工具和缺失参数；不会执行操作。"""
+        """结合对象别名、ECU 和单位上下文生成工具参数；不会执行操作。"""
         plan = toolkit.planner.plan(request, context=context)
         if (
             allowed_names is not None

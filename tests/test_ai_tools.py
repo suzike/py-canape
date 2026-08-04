@@ -205,18 +205,23 @@ class AIToolTests(unittest.TestCase):
                 dry_run=False,
                 action_plan_id=plan_id,
             )
+        self.assertEqual(self.store.get(plan_id).status, "stale")
 
     def test_failed_action_plan_cannot_be_retried(self):
+        def fail_write(device, parameter, *, verify=True):
+            raise RuntimeError("simulated write failure")
+
+        self.canape.write_calibration_parameter = fail_write
         arguments = {
             "device": "ECU",
             "name": "Gain",
-            "value": 20.0,
-            "reason": "invalid",
+            "value": 2.0,
+            "reason": "runtime failure",
         }
         planned = self.toolkit.registry.invoke("calibration_write", arguments)
         plan_id = planned["action_plan"]["id"]
         self.store.approve(plan_id, "engineer")
-        with self.assertRaises(ValueError):
+        with self.assertRaises(RuntimeError):
             self.toolkit.registry.invoke(
                 "calibration_write",
                 arguments,
@@ -231,6 +236,117 @@ class AIToolTests(unittest.TestCase):
                 dry_run=False,
                 action_plan_id=plan_id,
             )
+
+    def test_calibration_plan_previews_difference_and_recovery(self):
+        arguments = {
+            "device": "ECU",
+            "name": "Gain",
+            "value": 2.5,
+            "reason": "response optimization",
+        }
+        result = self.toolkit.registry.invoke("calibration_write", arguments)
+        preview = result["execution_preview"]
+        self.assertEqual(preview["current"]["value"], 1.0)
+        self.assertEqual(preview["target"]["value"], 2.5)
+        self.assertEqual(preview["difference"]["delta"], 1.5)
+        self.assertTrue(preview["validation"]["passed"])
+        self.assertEqual(
+            preview["recovery"]["snapshot"]["value"],
+            1.0,
+        )
+        self.assertEqual(
+            result["action_plan"]["precondition_digest"],
+            preview["precondition_digest"],
+        )
+
+    def test_calibration_plan_rejects_out_of_range_target_before_approval(self):
+        with self.assertRaisesRegex(ValueError, "大于上限"):
+            self.toolkit.registry.invoke(
+                "calibration_write",
+                {
+                    "device": "ECU",
+                    "name": "Gain",
+                    "value": 20.0,
+                    "reason": "invalid target",
+                },
+            )
+        self.assertFalse(self.approval_path.exists())
+
+    def test_calibration_plan_rejects_stale_current_value(self):
+        arguments = {
+            "device": "ECU",
+            "name": "Gain",
+            "value": 2.0,
+            "reason": "response optimization",
+        }
+        planned = self.toolkit.registry.invoke("calibration_write", arguments)
+        plan_id = planned["action_plan"]["id"]
+        self.store.approve(plan_id, "engineer")
+        self.canape.values["Gain"] = 1.5
+        with self.assertRaisesRegex(SafetyViolationError, "前置状态已改变"):
+            self.toolkit.registry.invoke(
+                "calibration_write",
+                arguments,
+                dry_run=False,
+                action_plan_id=plan_id,
+            )
+        self.assertEqual(self.canape.values["Gain"], 1.5)
+        self.assertEqual(self.store.get(plan_id).status, "stale")
+        self.canape.values["Gain"] = 1.0
+        with self.assertRaisesRegex(SafetyViolationError, "stale"):
+            self.toolkit.registry.invoke(
+                "calibration_write",
+                arguments,
+                dry_run=False,
+                action_plan_id=plan_id,
+            )
+
+    def test_planner_resolves_alias_and_converts_units(self):
+        result = self.toolkit.planner.plan(
+            "把冷却液目标温度修改为 313.15 K",
+            context={
+                "default_device": "VCU",
+                "reason": "warm-up calibration",
+                "objects": [
+                    {
+                        "name": "CoolantTargetTemp",
+                        "aliases": ["冷却液目标温度"],
+                        "unit": "°C",
+                        "minimum": 40,
+                        "maximum": 120,
+                    }
+                ],
+            },
+        )
+        self.assertEqual(result["status"], "ready")
+        self.assertEqual(result["tool"], "calibration_write")
+        self.assertEqual(result["arguments"]["device"], "VCU")
+        self.assertEqual(result["arguments"]["name"], "CoolantTargetTemp")
+        self.assertAlmostEqual(result["arguments"]["value"], 40.0, places=6)
+        self.assertTrue(result["resolution"]["unit_converted"])
+
+    def test_planner_requires_disambiguation_for_shared_alias(self):
+        result = self.toolkit.planner.plan(
+            "读取标定 冷却液目标温度",
+            context={
+                "objects": [
+                    {
+                        "device": "VCU",
+                        "name": "VcuCoolantTarget",
+                        "aliases": ["冷却液目标温度"],
+                        "unit": "°C",
+                    },
+                    {
+                        "device": "TMM",
+                        "name": "TmmCoolantTarget",
+                        "aliases": ["冷却液目标温度"],
+                        "unit": "°C",
+                    },
+                ]
+            },
+        )
+        self.assertEqual(result["status"], "ambiguous")
+        self.assertEqual(len(result["resolution"]["candidates"]), 2)
 
     def test_natural_language_planner_never_executes(self):
         result = self.toolkit.planner.plan(

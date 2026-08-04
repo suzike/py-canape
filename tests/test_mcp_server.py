@@ -108,6 +108,55 @@ class MCPServerTests(unittest.TestCase):
         self.assertEqual(plan["status"], "not_exposed")
         self.assertEqual(plan["tool"], "flash_start")
 
+    def test_mcp_natural_language_plan_uses_engineering_context(self):
+        server = create_server(canape=FakeAICANape())
+        _, plan = asyncio.run(
+            server.call_tool(
+                "agent2canape_plan_natural_language",
+                {
+                    "request": "把目标增益修改为 2.5",
+                    "context": {
+                        "default_device": "ECU",
+                        "reason": "response optimization",
+                        "objects": [
+                            {
+                                "name": "Gain",
+                                "aliases": ["目标增益"],
+                                "unit": "",
+                                "minimum": 0,
+                                "maximum": 10,
+                            }
+                        ],
+                    },
+                },
+            )
+        )
+        self.assertEqual(plan["status"], "ready")
+        self.assertEqual(plan["arguments"]["name"], "Gain")
+        self.assertEqual(plan["arguments"]["value"], 2.5)
+
+    def test_mcp_calibration_dry_run_contains_live_preview(self):
+        with tempfile.TemporaryDirectory() as directory:
+            server = create_server(
+                canape=FakeAICANape(),
+                approval_file=Path(directory) / "approvals.json",
+            )
+            _, result = asyncio.run(
+                server.call_tool(
+                    "agent2canape_calibration_write",
+                    {
+                        "device": "ECU",
+                        "name": "Gain",
+                        "value": 2.5,
+                        "reason": "response optimization",
+                        "dry_run": True,
+                    },
+                )
+            )
+        self.assertEqual(result["status"], "planned")
+        self.assertEqual(result["execution_preview"]["current"]["value"], 1.0)
+        self.assertEqual(result["execution_preview"]["target"]["value"], 2.5)
+
 
 if __name__ == "__main__":
     unittest.main()

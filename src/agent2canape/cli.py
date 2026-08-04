@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import argparse
+import gc
 import json
 import platform
 import sys
 import time
-from dataclasses import asdict
+from contextlib import redirect_stderr, redirect_stdout
+from dataclasses import asdict, replace
+from io import StringIO
 from pathlib import Path
 
 from . import __version__
@@ -288,12 +291,36 @@ def _ai_plan(
     request: str,
     context: str,
     approval_file: str | None,
+    context_file: str | None = None,
+    reason: str | None = None,
 ) -> int:
+    if context_file:
+        context_data = json.loads(
+            Path(context_file).expanduser().resolve().read_text(encoding="utf-8")
+        )
+    else:
+        context_data = json.loads(context)
+    if reason:
+        context_data["reason"] = reason
     result = _ai_toolkit(approval_file).planner.plan(
-        request, context=json.loads(context)
+        request,
+        context=context_data,
     )
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0 if result["status"] == "ready" else 1
+
+
+def _engineering_context_validate(path: str) -> int:
+    from .engineering_context import EngineeringContextResolver
+
+    source = Path(path).expanduser().resolve()
+    context = json.loads(source.read_text(encoding="utf-8"))
+    result = {
+        "path": str(source),
+        **EngineeringContextResolver.validate(context),
+    }
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0 if result["passed"] else 1
 
 
 def _ai_approve(plan_id: str, approver: str, approval_file: str | None) -> int:
@@ -326,13 +353,41 @@ def _mcp_doctor(
     live_canape: bool,
     skip_clients: bool,
 ) -> int:
-    from .mcp_diagnostics import diagnostic_json, run_mcp_diagnostics
-
-    report = run_mcp_diagnostics(
-        project=project,
-        check_clients=not skip_clients,
-        live_canape=live_canape,
+    from .mcp_diagnostics import (
+        MCPDiagnosticCheck,
+        diagnostic_json,
+        run_mcp_diagnostics,
     )
+
+    runtime_stdout = StringIO()
+    runtime_stderr = StringIO()
+    with redirect_stdout(runtime_stdout), redirect_stderr(runtime_stderr):
+        report = run_mcp_diagnostics(
+            project=project,
+            check_clients=not skip_clients,
+            live_canape=live_canape,
+        )
+        gc.collect()
+    suppressed_lines = sum(
+        len(value.splitlines())
+        for value in (runtime_stdout.getvalue(), runtime_stderr.getvalue())
+    )
+    if suppressed_lines:
+        report = replace(
+            report,
+            checks=(
+                *report.checks,
+                MCPDiagnosticCheck(
+                    name="runtime:out_of_band_output",
+                    status="warning",
+                    message="已隔离底层 COM 运行时的非 JSON 输出",
+                    remediation=(
+                        "若重复出现，请检查 pywin32 gen_py 缓存与 CANape COM 资源释放"
+                    ),
+                    evidence={"suppressed_line_count": suppressed_lines},
+                ),
+            ),
+        )
     print(diagnostic_json(report))
     return 0 if report.passed else 1
 
@@ -428,11 +483,18 @@ def main(argv: list[str] | None = None) -> int:
         help="使用安全高斯过程代理模型推荐下一组标定候选",
     )
     safe_suggest.add_argument("spec", type=str)
+    context_validate = subparsers.add_parser(
+        "context-validate",
+        help="验证 AI 工程对象、别名、单位和范围上下文",
+    )
+    context_validate.add_argument("path", type=str)
     ai_tools = subparsers.add_parser("ai-tools", help="列出 AI/MCP 工具和 JSON Schema")
     ai_tools.add_argument("--approval-file", type=str)
     ai_plan = subparsers.add_parser("ai-plan", help="把自然语言请求转换为工程工具计划")
     ai_plan.add_argument("request", type=str)
     ai_plan.add_argument("--context", default="{}", type=str)
+    ai_plan.add_argument("--context-file", type=str)
+    ai_plan.add_argument("--reason", type=str)
     ai_plan.add_argument("--approval-file", type=str)
     ai_approve = subparsers.add_parser("ai-approve", help="由外部用户审批 AI Action Plan")
     ai_approve.add_argument("plan_id", type=str)
@@ -495,10 +557,18 @@ def main(argv: list[str] | None = None) -> int:
         return _calibration_experiment_report(args.path, args.output)
     if args.command == "calibration-safe-suggest":
         return _calibration_safe_suggest(args.spec)
+    if args.command == "context-validate":
+        return _engineering_context_validate(args.path)
     if args.command == "ai-tools":
         return _ai_tools(args.approval_file)
     if args.command == "ai-plan":
-        return _ai_plan(args.request, args.context, args.approval_file)
+        return _ai_plan(
+            args.request,
+            args.context,
+            args.approval_file,
+            args.context_file,
+            args.reason,
+        )
     if args.command == "ai-approve":
         return _ai_approve(args.plan_id, args.approver, args.approval_file)
     if args.command == "ai-call":

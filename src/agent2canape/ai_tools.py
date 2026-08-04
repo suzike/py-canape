@@ -16,6 +16,7 @@ from enum import IntEnum
 from pathlib import Path
 from typing import Any
 
+from .engineering_context import EngineeringContextResolver
 from .errors import SafetyViolationError
 
 
@@ -35,6 +36,56 @@ def _object_dict(value: Any) -> dict[str, Any]:
     raise TypeError(f"对象不能转换为结构化结果：{type(value).__name__}")
 
 
+def _numeric_values(value: Any) -> list[float]:
+    if isinstance(value, bool):
+        return []
+    if isinstance(value, (int, float)):
+        return [float(value)]
+    if isinstance(value, (list, tuple)):
+        return [number for item in value for number in _numeric_values(item)]
+    return []
+
+
+def _difference_summary(before: Any, target: Any) -> dict[str, Any]:
+    before_values = _numeric_values(before)
+    target_values = _numeric_values(target)
+    if len(before_values) == len(target_values) == 1:
+        delta = target_values[0] - before_values[0]
+        return {
+            "type": "scalar",
+            "delta": delta,
+            "percent": (
+                delta / abs(before_values[0]) * 100.0
+                if before_values[0] != 0
+                else None
+            ),
+        }
+    if before_values and len(before_values) == len(target_values):
+        deltas = [
+            target_value - before_value
+            for before_value, target_value in zip(
+                before_values,
+                target_values,
+                strict=True,
+            )
+        ]
+        changed = [delta for delta in deltas if abs(delta) > 1e-12]
+        return {
+            "type": "array",
+            "points": len(deltas),
+            "changed_points": len(changed),
+            "maximum_absolute_delta": max((abs(delta) for delta in deltas), default=0.0),
+            "mean_absolute_delta": (
+                sum(abs(delta) for delta in deltas) / len(deltas) if deltas else 0.0
+            ),
+        }
+    return {
+        "type": "structural",
+        "before_points": len(before_values),
+        "target_points": len(target_values),
+    }
+
+
 class ToolRisk(IntEnum):
     READ_ONLY = 0
     PROJECT_CONTROL = 10
@@ -52,6 +103,11 @@ class AIToolSpec:
     input_schema: dict[str, Any]
     risk: ToolRisk
     handler: Callable[..., Any] = field(repr=False, compare=False)
+    previewer: Callable[..., dict[str, Any]] | None = field(
+        default=None,
+        repr=False,
+        compare=False,
+    )
 
     def public(self) -> dict[str, Any]:
         return {
@@ -76,6 +132,8 @@ class AIActionPlan:
     approved_by: str = ""
     approved_utc: str = ""
     consumed_utc: str = ""
+    preview: dict[str, Any] = field(default_factory=dict)
+    precondition_digest: str = ""
 
 
 class ApprovalStore:
@@ -137,8 +195,18 @@ class ApprovalStore:
         temporary.replace(self.path)
 
     @staticmethod
-    def digest(tool: str, arguments: Mapping[str, Any]) -> str:
-        payload = _canonical({"tool": tool, "arguments": dict(arguments)})
+    def digest(
+        tool: str,
+        arguments: Mapping[str, Any],
+        precondition_digest: str = "",
+    ) -> str:
+        payload_data: dict[str, Any] = {
+            "tool": tool,
+            "arguments": dict(arguments),
+        }
+        if precondition_digest:
+            payload_data["precondition_digest"] = precondition_digest
+        payload = _canonical(payload_data)
         return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
     def create(
@@ -148,18 +216,23 @@ class ApprovalStore:
         risk: ToolRisk,
         *,
         ttl_minutes: int = 30,
+        preview: Mapping[str, Any] | None = None,
     ) -> AIActionPlan:
         if ttl_minutes <= 0:
             raise ValueError("ttl_minutes 必须大于 0")
         created = _now()
+        preview_data = dict(preview or {})
+        precondition_digest = str(preview_data.get("precondition_digest", ""))
         plan = AIActionPlan(
             id=str(uuid.uuid4()),
             tool=tool,
             arguments=dict(arguments),
             risk=risk.name,
-            digest=self.digest(tool, arguments),
+            digest=self.digest(tool, arguments, precondition_digest),
             created_utc=created.isoformat(),
             expires_utc=(created + timedelta(minutes=ttl_minutes)).isoformat(),
+            preview=preview_data,
+            precondition_digest=precondition_digest,
         )
         with self._lock, self._process_lock():
             data = self._read()
@@ -202,6 +275,8 @@ class ApprovalStore:
         plan_id: str,
         tool: str,
         arguments: Mapping[str, Any],
+        *,
+        precondition_digest: str = "",
     ) -> AIActionPlan:
         with self._lock, self._process_lock():
             data = self._read()
@@ -213,9 +288,14 @@ class ApprovalStore:
                 raise SafetyViolationError(f"审批计划未批准：{plan.status}")
             if _now() > datetime.fromisoformat(plan.expires_utc):
                 raise SafetyViolationError("审批计划已过期")
-            digest = self.digest(tool, arguments)
+            digest = self.digest(tool, arguments, precondition_digest)
             if plan.tool != tool or plan.digest != digest:
-                raise SafetyViolationError("工具或参数已改变，必须重新生成审批计划")
+                plan.status = "stale"
+                data[plan_id] = asdict(plan)
+                self._write(data)
+                raise SafetyViolationError(
+                    "工具、参数或执行前置状态已改变，必须重新生成审批计划"
+                )
             plan.status = "executing"
             data[plan_id] = asdict(plan)
             self._write(data)
@@ -292,16 +372,31 @@ class AIToolRegistry:
         self._validate(spec.input_schema, values)
         if spec.risk > ToolRisk.READ_ONLY:
             if dry_run or not action_plan_id:
-                plan = self.approvals.create(name, values, spec.risk)
+                preview = spec.previewer(**values) if spec.previewer else {}
+                plan = self.approvals.create(
+                    name,
+                    values,
+                    spec.risk,
+                    preview=preview,
+                )
                 return {
                     "status": "planned",
                     "executed": False,
                     "tool": name,
                     "risk": spec.risk.name,
                     "action_plan": asdict(plan),
+                    "execution_preview": preview,
                     "message": "请由用户或外部审批者批准后再次调用",
                 }
-            approval = self.approvals.claim(action_plan_id, name, values)
+            current_preview = spec.previewer(**values) if spec.previewer else {}
+            approval = self.approvals.claim(
+                action_plan_id,
+                name,
+                values,
+                precondition_digest=str(
+                    current_preview.get("precondition_digest", "")
+                ),
+            )
             try:
                 result = spec.handler(**values)
             except Exception:
@@ -392,6 +487,7 @@ class EngineeringCommandPlanner:
         context: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         normalized = text.casefold().strip()
+        supplied = dict(context or {})
         matches = [
             (max(len(phrase) for phrase in phrases if phrase in normalized), tool)
             for phrases, tool in self.ROUTES
@@ -399,6 +495,14 @@ class EngineeringCommandPlanner:
         ]
         best = max((score for score, _ in matches), default=0)
         candidates = sorted({tool for score, tool in matches if score == best})
+        if not candidates and supplied.get("objects"):
+            if any(
+                phrase in normalized
+                for phrase in ("改为", "设为", "设置为", "调整为", "修改为", "写为")
+            ):
+                candidates = ["calibration_write"]
+            elif any(phrase in normalized for phrase in ("读取", "查看", "read")):
+                candidates = ["calibration_read"]
         if not candidates:
             return {
                 "status": "unresolved",
@@ -414,11 +518,35 @@ class EngineeringCommandPlanner:
                 "message": "检测到多个工程动作，必须拆分后执行",
             }
         spec = self.registry.get(candidates[0])
-        supplied = dict(context or {})
         properties = spec.input_schema.get("properties", {})
         arguments = {name: supplied[name] for name in properties if name in supplied}
+        resolution: dict[str, Any] | None = None
+        if spec.name in {"calibration_read", "calibration_write"} and supplied.get(
+            "objects"
+        ):
+            resolution = EngineeringContextResolver.resolve(text, supplied)
+            if resolution["status"] in {
+                "ambiguous",
+                "target_out_of_range",
+                "unit_error",
+            }:
+                return {
+                    "status": resolution["status"],
+                    "text": text,
+                    "tool": spec.name,
+                    "risk": spec.risk.name,
+                    "arguments": arguments,
+                    "resolution": resolution,
+                    "message": resolution.get("message", "工程对象解析失败"),
+                }
+            if resolution["status"] == "resolved":
+                if resolution.get("device"):
+                    arguments.setdefault("device", resolution["device"])
+                arguments.setdefault("name", resolution["name"])
+                if spec.name == "calibration_write" and "target_value" in resolution:
+                    arguments.setdefault("value", resolution["target_value"])
         missing = sorted(set(spec.input_schema.get("required", ())) - set(arguments))
-        return {
+        result = {
             "status": "ready" if not missing else "needs_arguments",
             "text": text,
             "tool": spec.name,
@@ -427,6 +555,9 @@ class EngineeringCommandPlanner:
             "missing_arguments": missing,
             "approval_required": spec.risk > ToolRisk.READ_ONLY,
         }
+        if resolution is not None:
+            result["resolution"] = resolution
+        return result
 
 
 def _schema(
@@ -493,6 +624,55 @@ class CANapeAIToolkit:
         result = asdict(parameter)
         result["kind"] = parameter.kind.value
         return result
+
+    def _calibration_write_preview(
+        self,
+        device: str,
+        name: str,
+        value: Any,
+        reason: str,
+        x_axis: list[float] | None = None,
+        y_axis: list[float] | None = None,
+    ) -> dict[str, Any]:
+        self._connected()
+        before = self.canape.read_calibration_parameter(device, name)
+        target = replace(
+            before,
+            value=value,
+            x_axis=list(before.x_axis if x_axis is None else x_axis),
+            y_axis=list(before.y_axis if y_axis is None else y_axis),
+        )
+        errors = target.validate()
+        if errors:
+            raise ValueError("; ".join(errors))
+        before_data = asdict(before)
+        before_data["kind"] = before.kind.value
+        target_data = asdict(target)
+        target_data["kind"] = target.kind.value
+        precondition_payload = {
+            "device": device,
+            "name": name,
+            "parameter": before_data,
+        }
+        precondition_digest = hashlib.sha256(
+            _canonical(precondition_payload).encode("utf-8")
+        ).hexdigest()
+        return {
+            "device": device,
+            "name": name,
+            "risk": ToolRisk.CALIBRATION_WRITE.name,
+            "reason": reason,
+            "current": before_data,
+            "target": target_data,
+            "difference": _difference_summary(before.value, target.value),
+            "validation": {"passed": True, "errors": []},
+            "recovery": {
+                "method": "restore_calibration_parameter",
+                "verify_readback": True,
+                "snapshot": before_data,
+            },
+            "precondition_digest": precondition_digest,
+        }
 
     def _calibration_write(
         self,
@@ -864,6 +1044,7 @@ class CANapeAIToolkit:
                 ),
                 ToolRisk.CALIBRATION_WRITE,
                 self._calibration_write,
+                self._calibration_write_preview,
             ),
             AIToolSpec(
                 "calibration_export",

@@ -1,6 +1,6 @@
 """Vector CANape 的 Python COM 控制接口。"""
 
-__version__ = "3.4.2"
+__version__ = "3.5.0"
 
 from .ai_tools import (
     AIActionPlan,
@@ -81,6 +81,11 @@ from .calibration_targets import (
 )
 from .canape import CANape
 from .capabilities import Capability, CapabilityRegistry
+from .engineering_context import (
+    EngineeringContextResolver,
+    EngineeringObject,
+    EngineeringUnitConverter,
+)
 from .errors import (
     AssetValidationError,
     CANapeCOMError,
@@ -226,6 +231,9 @@ __all__ = [
     "FlashStateInfo",
     "RecorderInfo",
     "TaskInfo",
+    "EngineeringContextResolver",
+    "EngineeringObject",
+    "EngineeringUnitConverter",
     "MCPDiagnosticCheck",
     "MCPDiagnosticReport",
     "run_mcp_diagnostics",

@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "context_id": "vehicle-calibration-example",
+  "model_version": "2026.08",
+  "default_device": "VCU",
+  "objects": [
+    {
+      "device": "VCU",
+      "name": "TorqueLimit",
+      "aliases": ["扭矩限制", "最大允许扭矩"],
+      "unit": "Nm",
+      "kind": "scalar",
+      "minimum": 0,
+      "maximum": 500,
+      "metadata": {
+        "function": "torque_coordination",
+        "owner": "powertrain"
+      }
+    },
+    {
+      "device": "TMM",
+      "name": "CoolantTargetTemp",
+      "aliases": ["冷却液目标温度", "目标水温"],
+      "unit": "°C",
+      "kind": "scalar",
+      "minimum": 40,
+      "maximum": 120,
+      "metadata": {
+        "function": "thermal_management",
+        "owner": "thermal"
+      }
+    },
+    {
+      "device": "BMS",
+      "name": "ChargePowerLimit",
+      "aliases": ["充电功率限制", "最大充电功率"],
+      "unit": "kW",
+      "kind": "curve",
+      "minimum": 0,
+      "maximum": 350,
+      "metadata": {
+        "function": "charging",
+        "owner": "battery"
+      }
+    }
+  ]
+}

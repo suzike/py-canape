@@ -9,7 +9,7 @@
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![CANape](https://img.shields.io/badge/CANape-17.x-0EA5E9)](#canape-17-兼容性)
 [![Capabilities](https://img.shields.io/badge/Capabilities-140%2F140-14B8A6)](./CAPABILITIES.md)
-[![Tests](https://img.shields.io/badge/Tests-117%20passed-22C55E)](#质量与验证)
+[![Tests](https://img.shields.io/badge/Tests-133%20passed-22C55E)](#质量与验证)
 [![License](https://img.shields.io/badge/License-MIT-F59E0B)](./LICENSE)
 
 **ECU 标定 · AI Agent · 在线测量 · 离线分析 · 安全门禁 · 工程闭环**
@@ -67,6 +67,8 @@ CANape 项目、ECU 在线状态、MDF/BLF 数据、A2L/DBC 数据库、标定�
 | 多 ECU | RAM 屏障、ROM 分阶段提交、掉线协调及跨控制器逆序补偿 |
 | 优化 | 加权、坐标搜索、Pareto，以及安全高斯过程下一候选推荐 |
 | AI 驱动 | 自然语言规划、MCP 工具、参数摘要绑定、单次外部审批 |
+| AI 工程上下文 | ECU/对象别名消歧、单位换算、范围门禁和模型版本元数据 |
+| 安全计划预览 | 当前值、目标值、差异、恢复快照及执行前基线一致性保护 |
 
 ```python
 from agent2canape import CalibrationChange, CalibrationDataset, CalibrationPlan
@@ -123,6 +125,19 @@ JSON Schema 的工程工具。只读动作可直接执行；任何非只读动�
 
 Codex、Claude Code 配置、审批协议和示例见
 [AI Agent 联动指南](./docs/AI_INTEGRATION.md)。
+
+工程对象上下文可在 AI 调用前验证并直接用于自然语言规划：
+
+```powershell
+agent2canape context-validate examples\engineering_context.json
+agent2canape ai-plan "把冷却液目标温度修改为 313.15 K" `
+  --context-file examples\engineering_context.json `
+  --reason "暖机响应优化"
+```
+
+标定写入的 Dry-run 会实际读取当前值，输出目标差异、范围校验和恢复快照，并将当前
+状态摘要绑定到 Action Plan。审批后如果其他终端已改变该对象，执行会被拒绝并要求
+重新生成计划。
 
 ## 140 项工程能力
 
@@ -341,7 +356,7 @@ CANape 的 vMDM 附属进程可能在 `Quit` 后继续驻留。若短时间内�
 
 ```text
 Ruff                    All checks passed
-Pytest                  117 passed
+Pytest                  133 passed
 Capability contracts    140 / 140, unique and resolvable
 Dependency check        No broken requirements
 MDF / BLF / DBC         Real file round-trip passed

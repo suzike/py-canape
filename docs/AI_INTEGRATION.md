@@ -133,6 +133,45 @@ Codex 的 `PermissionRequest` Hook 和 Agent2Canape 自身的两阶段审批是�
 
 ## 自然语言到工程动作
 
+### 工程对象上下文与单位换算
+
+AI 不应仅凭相似名称猜测 ECU 标定对象。项目可维护 JSON 工程上下文，定义默认 ECU、
+对象正式名称、别名、物理单位、范围和车型元数据。仓库示例：
+[`examples/engineering_context.json`](../examples/engineering_context.json)。
+
+```powershell
+agent2canape context-validate examples\engineering_context.json
+agent2canape ai-plan "把冷却液目标温度修改为 313.15 K" `
+  --context-file examples\engineering_context.json `
+  --reason "暖机响应优化"
+```
+
+规划器只执行白名单物理单位换算。未知单位、对象未声明目标单位、跨维度换算和上下文
+范围越界都会直接返回错误；同一别名对应多个 ECU 时，必须在请求或上下文中明确 ECU。
+上下文用于生成候选参数，不会自行执行 CANape 动作。
+变更原因属于本次任务而不是车型知识，应通过 `--reason` 或 MCP `context.reason` 显式
+提供并进入 Action Plan 审计，不会由规划器凭空生成。
+
+MCP 调用可把同一 JSON 对象作为 `agent2canape_plan_natural_language` 的 `context` 参数。
+例如 `313.15 K` 会确定性换算为对象单位中的 `40 °C`，并在结果中记录源单位、目标单位
+和是否发生换算。
+
+### 实时标定写入预览
+
+`calibration_write` 的 Dry-run 不再只展示用户提交参数，而是实际执行只读操作获取当前
+标定对象，并返回：
+
+- 当前值、轴、单位、范围和对象类型；
+- 目标值与标量百分比差异，或曲线/MAP 的变化点数和最大/平均绝对差；
+- 写入前范围、维度和轴校验；
+- 用于失败恢复的完整当前对象快照和回读要求；
+- 绑定当前对象状态的 SHA-256 前置摘要。
+
+该摘要属于审批计划的一部分。工程师批准后，如果对象被 CANape UI、另一 AI 会话或
+其他标定终端修改，执行调用会在写入前失败，旧计划进入 `stale` 且不可再次使用，必须
+重新读取、重新预览和重新审批。
+升级前生成但尚未执行的标定写入计划不具备前置摘要，应重新生成。
+
 示例请求：
 
 ```text
