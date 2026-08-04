@@ -1,6 +1,6 @@
 """Vector CANape 的 Python COM 控制接口。"""
 
-__version__ = "3.6.0"
+__version__ = "3.7.0"
 
 from .ai_tools import (
     AIActionPlan,
@@ -46,6 +46,10 @@ from .calibration_formats import (
     A2LAxisDescriptor,
     A2LCatalog,
     A2LCompuMethod,
+    A2LCompuTable,
+    A2LFunction,
+    A2LGroup,
+    A2LMemorySegment,
     A2LObject,
     A2LRecordLayout,
     CalibrationDatasetIO,
@@ -171,6 +175,10 @@ __all__ = [
     "A2LObject",
     "A2LAxisDescriptor",
     "A2LCompuMethod",
+    "A2LCompuTable",
+    "A2LFunction",
+    "A2LGroup",
+    "A2LMemorySegment",
     "A2LRecordLayout",
     "CalibrationChangeItem",
     "CalibrationChangeSet",

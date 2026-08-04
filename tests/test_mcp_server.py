@@ -7,6 +7,7 @@ import unittest
 from pathlib import Path
 
 from test_ai_tools import FakeAICANape
+from test_calibration_formats import A2L_SAMPLE
 
 from agent2canape.mcp_runtime import MCPRuntimeGovernor
 from agent2canape.mcp_server import create_server
@@ -40,6 +41,7 @@ class MCPServerTests(unittest.TestCase):
         self.assertIn("agent2canape_tool_manifest", names)
         self.assertIn("agent2canape_runtime_status", names)
         self.assertIn("agent2canape_plan_natural_language", names)
+        self.assertIn("agent2canape_a2l_context", names)
         self.assertIn("agent2canape_calibration_read", names)
         self.assertIn("agent2canape_calibration_write", names)
         self.assertIn("agent2canape_calibration_change_set_status", names)
@@ -55,6 +57,34 @@ class MCPServerTests(unittest.TestCase):
         self.assertIn("device", calibration_write.inputSchema["properties"])
         self.assertIn("value", calibration_write.inputSchema["properties"])
         self.assertIn("device", calibration_write.inputSchema["required"])
+
+    def test_mcp_builds_filtered_a2l_engineering_context(self):
+        root = Path(self.temporary.name)
+        a2l = root / "demo.a2l"
+        a2l.write_text(A2L_SAMPLE, encoding="latin-1")
+        server = create_server(
+            canape=FakeAICANape(),
+            runtime_governor=self.runtime,
+        )
+
+        _, structured = asyncio.run(
+            server.call_tool(
+                "agent2canape_a2l_context",
+                {
+                    "a2l_file": str(a2l),
+                    "device": "HVAC",
+                    "group": "ThermalCalibration",
+                    "limit": 10,
+                    "dry_run": True,
+                    "action_plan_id": "",
+                },
+            )
+        )
+
+        context = structured["result"]
+        self.assertEqual(context["default_device"], "HVAC")
+        self.assertEqual(context["selection"]["returned_object_count"], 2)
+        self.assertEqual(structured["_runtime"]["resource"], None)
 
     def test_in_process_read_only_tool_call(self):
         server = create_server(

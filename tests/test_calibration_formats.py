@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -14,6 +15,7 @@ from agent2canape import (
     CalibrationParameter,
     CalibrationPlan,
     CalibrationRepository,
+    EngineeringContextResolver,
     ParameterConstraint,
     RelationConstraint,
 )
@@ -35,6 +37,31 @@ ASAP2_VERSION 1 71
       "%6.1"
       "degC"
       COEFFS 0 1 0 0 0 1
+    /end COMPU_METHOD
+    /begin COMPU_VTAB
+      FanModeTable
+      "Fan mode values"
+      TAB_VERB
+      3
+      0 "Off"
+      1 "Auto"
+      2 "Forced"
+    /end COMPU_VTAB
+    /begin COMPU_VTAB_RANGE
+      TemperatureStateTable
+      "Temperature state ranges"
+      TAB_VERB
+      2
+      -40 0 "Cold"
+      1 215 "Warm"
+    /end COMPU_VTAB_RANGE
+    /begin COMPU_METHOD
+      FanModeConv
+      "Fan mode"
+      TAB_VERB
+      "%1.0"
+      ""
+      COMPU_TAB_REF FanModeTable
     /end COMPU_METHOD
     /begin RECORD_LAYOUT
       CurveLayout
@@ -71,6 +98,18 @@ ASAP2_VERSION 1 71
         215
       /end AXIS_DESCR
     /end CHARACTERISTIC
+    /begin CHARACTERISTIC
+      FanMode
+      "Fan mode"
+      VALUE
+      0x2050
+      CurveLayout
+      0
+      FanModeConv
+      0
+      2
+      BIT_MASK 0x03
+    /end CHARACTERISTIC
     /begin AXIS_PTS
       FanAxis
       "Fan temperature axis"
@@ -83,6 +122,35 @@ ASAP2_VERSION 1 71
       -40
       215
     /end AXIS_PTS
+    /begin FUNCTION
+      ThermalControl
+      "Thermal management function"
+      /begin DEF_CHARACTERISTIC
+        FanDutyMap FanMode
+      /end DEF_CHARACTERISTIC
+      /begin IN_MEASUREMENT
+        CoolantTemp
+      /end IN_MEASUREMENT
+    /end FUNCTION
+    /begin GROUP
+      ThermalCalibration
+      "Thermal calibration group"
+      ROOT
+      /begin REF_CHARACTERISTIC
+        FanDutyMap FanMode
+      /end REF_CHARACTERISTIC
+      /begin REF_MEASUREMENT
+        CoolantTemp
+      /end REF_MEASUREMENT
+    /end GROUP
+    /begin MEMORY_SEGMENT
+      CalibrationRam
+      "Calibration RAM"
+      DATA
+      0x2000
+      0x1000
+      0 0 0 0 0
+    /end MEMORY_SEGMENT
   /end MODULE
 /end PROJECT
 """
@@ -136,7 +204,39 @@ def test_a2l_semantic_catalog(tmp_path: Path) -> None:
     assert axis.minimum == -40
     assert axis.maximum == 215
     assert axis.metadata["max_points"] == 8
+    mode = catalog.get("FanMode")
+    assert mode.bit_mask == 0x03
+    assert mode.enum_values == {0.0: "Off", 1.0: "Auto", 2.0: "Forced"}
+    assert catalog.compu_tables["TemperatureStateTable"].ranges == (
+        (-40.0, 0.0, "Cold"),
+        (1.0, 215.0, "Warm"),
+    )
+    assert mode.functions == ("ThermalControl",)
+    assert mode.groups == ("ThermalCalibration",)
+    assert mode.memory_segments == ("CalibrationRam",)
+    assert catalog.functions["ThermalControl"].in_measurements == ("CoolantTemp",)
+    assert catalog.groups["ThermalCalibration"].root is True
+    assert catalog.memory_segments["CalibrationRam"].address == 0x2000
+    assert catalog.memory_segments["CalibrationRam"].size == 0x1000
     assert catalog.summary()["passed"] is True
+
+
+def test_a2l_generates_ai_context_and_resolves_enum(tmp_path: Path) -> None:
+    path = tmp_path / "demo.a2l"
+    path.write_text(A2L_SAMPLE, encoding="latin-1")
+
+    context = A2LCatalog.parse(path).to_engineering_context(device="HVAC")
+
+    assert context["default_device"] == "HVAC"
+    assert len(context["model_version"]) == 64
+    assert len(context["objects"]) == 3
+    mode = next(item for item in context["objects"] if item["name"] == "FanMode")
+    assert mode["metadata"]["functions"] == ["ThermalControl"]
+    result = EngineeringContextResolver.resolve("set Fan mode to Forced", context)
+    assert result["status"] == "resolved"
+    assert result["device"] == "HVAC"
+    assert result["target_value"] == 2
+    assert result["enum_resolved"] is True
 
 
 def test_offline_a2l_uses_semantic_catalog(tmp_path: Path) -> None:
@@ -250,7 +350,30 @@ def test_cli_a2l_summary_and_convert(
     a2l = tmp_path / "demo.a2l"
     a2l.write_text(A2L_SAMPLE, encoding="latin-1")
     assert main(["a2l-summary", str(a2l)]) == 0
-    assert '"object_count": 3' in capsys.readouterr().out
+    assert '"object_count": 4' in capsys.readouterr().out
+
+    context_file = tmp_path / "thermal-context.json"
+    assert (
+        main(
+            [
+                "a2l-context",
+                str(a2l),
+                "--output",
+                str(context_file),
+                "--device",
+                "HVAC",
+                "--group",
+                "thermalcalibration",
+            ]
+        )
+        == 0
+    )
+    generated = json.loads(context_file.read_text(encoding="utf-8"))
+    assert generated["selection"]["returned_object_count"] == 2
+    assert {item["name"] for item in generated["objects"]} == {
+        "FanDutyMap",
+        "FanMode",
+    }
 
     source = tmp_path / "source.json"
     target = tmp_path / "target.cdfx"

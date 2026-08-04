@@ -425,6 +425,7 @@ class EngineeringCommandPlanner:
     """将常见中英文工程意图映射为候选工具；不执行任何操作。"""
 
     ROUTES = (
+        (("生成a2l上下文", "a2l 工程上下文", "build a2l context"), "a2l_context"),
         (("列出标定", "标定量清单", "list calibration"), "calibration_list"),
         (("读取标定", "read calibration"), "calibration_read"),
         (("写入标定", "修改标定", "write calibration"), "calibration_write"),
@@ -529,6 +530,7 @@ class EngineeringCommandPlanner:
                 "ambiguous",
                 "target_out_of_range",
                 "unit_error",
+                "enum_error",
             }:
                 return {
                     "status": resolution["status"],
@@ -624,6 +626,29 @@ class CANapeAIToolkit:
         result = asdict(parameter)
         result["kind"] = parameter.kind.value
         return result
+
+    @staticmethod
+    def _a2l_context(
+        a2l_file: str,
+        device: str = "",
+        include_measurements: bool = False,
+        function: str = "",
+        group: str = "",
+        query: str = "",
+        limit: int = 500,
+    ) -> dict[str, Any]:
+        from .calibration_formats import A2LCatalog
+
+        if not 1 <= limit <= 5000:
+            raise ValueError("A2L MCP 上下文 limit 必须在 1 到 5000 之间")
+        return A2LCatalog.parse(a2l_file).to_engineering_context(
+            device=device,
+            include_measurements=include_measurements,
+            function=function,
+            group=group,
+            query=query,
+            limit=limit,
+        )
 
     def _calibration_write_preview(
         self,
@@ -1007,6 +1032,24 @@ class CANapeAIToolkit:
                 _schema({"device": "string"}, required=("device",)),
                 ToolRisk.PROJECT_CONTROL,
                 self._device_offline,
+            ),
+            AIToolSpec(
+                "a2l_context",
+                "从 A2L 枚举、功能组、范围和对象语义生成可供 AI 消歧的工程上下文。",
+                _schema(
+                    {
+                        "a2l_file": "string",
+                        "device": "string",
+                        "include_measurements": "boolean",
+                        "function": "string",
+                        "group": "string",
+                        "query": "string",
+                        "limit": "integer",
+                    },
+                    required=("a2l_file",),
+                ),
+                ToolRisk.READ_ONLY,
+                self._a2l_context,
             ),
             AIToolSpec(
                 "calibration_list",

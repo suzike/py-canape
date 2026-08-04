@@ -11,6 +11,13 @@ def _normalize(text: str) -> str:
     return re.sub(r"[\s_\-./\\]+", "", text).casefold()
 
 
+def _float_value(value: Any) -> float | None:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
 @dataclass(frozen=True, slots=True)
 class EngineeringObject:
     """可供 AI 检索的工程对象，不包含在线写能力。"""
@@ -135,6 +142,11 @@ class EngineeringContextResolver:
         r"(?P<unit>[%°℃a-zA-Z][%°℃a-zA-Z0-9*/·^-]*)?",
         re.IGNORECASE,
     )
+    _ENUM_TARGET_PATTERN = re.compile(
+        r"(?:改为|设为|设置为|调整为|修改为|写为|to|=)\s*"
+        r"(?P<label>[^,，。;；]+?)\s*$",
+        re.IGNORECASE,
+    )
 
     @classmethod
     def validate(cls, context: dict[str, Any]) -> dict[str, Any]:
@@ -161,6 +173,46 @@ class EngineeringContextResolver:
                 errors.append(f"{item.device}/{item.name} 下限大于上限")
             if not EngineeringUnitConverter.supports(item.unit):
                 errors.append(f"{item.device}/{item.name} 使用不支持的单位：{item.unit}")
+            enum_values = item.metadata.get("enum_values", {})
+            if not isinstance(enum_values, dict):
+                errors.append(f"{item.device}/{item.name} enum_values 必须是对象")
+            else:
+                labels: set[str] = set()
+                for raw, label in enum_values.items():
+                    try:
+                        float(raw)
+                    except (TypeError, ValueError):
+                        errors.append(
+                            f"{item.device}/{item.name} 枚举原始值无效：{raw}"
+                        )
+                    normalized_label = _normalize(str(label))
+                    if normalized_label in labels:
+                        warnings.append(
+                            f"{item.device}/{item.name} 枚举标签重复：{label}"
+                        )
+                    labels.add(normalized_label)
+            enum_ranges = item.metadata.get("enum_ranges", ())
+            if not isinstance(enum_ranges, (list, tuple)):
+                errors.append(f"{item.device}/{item.name} enum_ranges 必须是数组")
+            else:
+                for enum_index, enum_range in enumerate(enum_ranges):
+                    if not isinstance(enum_range, (list, tuple)) or len(enum_range) != 3:
+                        errors.append(
+                            f"{item.device}/{item.name} enum_ranges[{enum_index}] 无效"
+                        )
+                        continue
+                    try:
+                        lower = float(enum_range[0])
+                        upper = float(enum_range[1])
+                    except (TypeError, ValueError):
+                        errors.append(
+                            f"{item.device}/{item.name} enum_ranges[{enum_index}] 边界无效"
+                        )
+                        continue
+                    if lower > upper:
+                        errors.append(
+                            f"{item.device}/{item.name} enum_ranges[{enum_index}] 下限大于上限"
+                        )
             objects.append(item)
 
         identities: set[tuple[str, str]] = set()
@@ -294,4 +346,66 @@ class EngineeringContextResolver:
                         ),
                     }
                 )
+            enum_values = item.metadata.get("enum_values", {})
+            enum_ranges = item.metadata.get("enum_ranges", ())
+            if result["status"] == "resolved" and (enum_values or enum_ranges):
+                discrete_match = any(
+                    abs(number - converted) <= 1e-12
+                    for raw in enum_values
+                    if (number := _float_value(raw)) is not None
+                )
+                range_match = any(
+                    lower <= converted <= upper
+                    for entry in enum_ranges
+                    if isinstance(entry, (list, tuple)) and len(entry) == 3
+                    and (lower := _float_value(entry[0])) is not None
+                    and (upper := _float_value(entry[1])) is not None
+                )
+                if not discrete_match and not range_match:
+                    result.update(
+                        {
+                            "status": "enum_error",
+                            "message": f"数值 {converted} 未在 A2L 枚举定义中",
+                        }
+                    )
+        elif isinstance(item.metadata.get("enum_values"), dict):
+            enum_target = cls._ENUM_TARGET_PATTERN.search(text)
+            if enum_target:
+                requested_label = enum_target.group("label").strip()
+                matches = [
+                    (raw, str(label))
+                    for raw, label in item.metadata["enum_values"].items()
+                    if _normalize(str(label)) == _normalize(requested_label)
+                ]
+                if len(matches) == 1:
+                    raw, label = matches[0]
+                    numeric = float(raw)
+                    result.update(
+                        {
+                            "target_value": (
+                                int(numeric) if numeric.is_integer() else numeric
+                            ),
+                            "source_value": label,
+                            "source_unit": "enum",
+                            "target_unit": item.unit,
+                            "unit_converted": False,
+                            "enum_resolved": True,
+                        }
+                    )
+                elif not matches:
+                    result.update(
+                        {
+                            "status": "enum_error",
+                            "source_value": requested_label,
+                            "message": f"未定义枚举标签：{requested_label}",
+                        }
+                    )
+                else:
+                    result.update(
+                        {
+                            "status": "enum_error",
+                            "source_value": requested_label,
+                            "message": f"枚举标签对应多个原始值：{requested_label}",
+                        }
+                    )
         return result

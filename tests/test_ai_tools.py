@@ -348,6 +348,47 @@ class AIToolTests(unittest.TestCase):
         self.assertEqual(result["status"], "ambiguous")
         self.assertEqual(len(result["resolution"]["candidates"]), 2)
 
+    def test_planner_resolves_a2l_enum_label_to_raw_value(self):
+        result = self.toolkit.planner.plan(
+            "把风扇模式设置为强制",
+            context={
+                "default_device": "HVAC",
+                "reason": "thermal calibration",
+                "objects": [
+                    {
+                        "name": "FanMode",
+                        "aliases": ["风扇模式"],
+                        "metadata": {
+                            "enum_values": {"0": "关闭", "1": "自动", "2": "强制"}
+                        },
+                    }
+                ],
+            },
+        )
+
+        self.assertEqual(result["status"], "ready")
+        self.assertEqual(result["arguments"]["name"], "FanMode")
+        self.assertEqual(result["arguments"]["value"], 2)
+        self.assertTrue(result["resolution"]["enum_resolved"])
+
+        rejected = self.toolkit.planner.plan(
+            "把风扇模式设置为 9",
+            context={
+                "default_device": "HVAC",
+                "reason": "negative test",
+                "objects": [
+                    {
+                        "name": "FanMode",
+                        "aliases": ["风扇模式"],
+                        "minimum": 0,
+                        "maximum": 10,
+                        "metadata": {"enum_values": {"0": "关闭", "1": "自动"}},
+                    }
+                ],
+            },
+        )
+        self.assertEqual(rejected["status"], "enum_error")
+
     def test_natural_language_planner_never_executes(self):
         result = self.toolkit.planner.plan(
             "请读取标定量",

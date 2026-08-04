@@ -168,6 +168,43 @@ def _a2l_summary(path: str) -> int:
     return 0 if result["passed"] else 1
 
 
+def _a2l_context(
+    path: str,
+    *,
+    output: str | None,
+    device: str,
+    include_measurements: bool,
+    function: str,
+    group: str,
+    query: str,
+) -> int:
+    from .calibration_formats import A2LCatalog
+
+    context = A2LCatalog.parse(path).to_engineering_context(
+        device=device,
+        include_measurements=include_measurements,
+        function=function,
+        group=group,
+        query=query,
+    )
+    if output:
+        target = Path(output).expanduser().resolve()
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(
+            json.dumps(context, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        result = {
+            "status": "passed",
+            "output": str(target),
+            **context["selection"],
+        }
+    else:
+        result = context
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0
+
+
 def _calibration_convert(source: str, output: str) -> int:
     from .calibration import CalibrationDataset
 
@@ -454,6 +491,17 @@ def main(argv: list[str] | None = None) -> int:
     calibration_verify.add_argument("--a2l", type=str)
     calibration_verify.add_argument("--hex", dest="hex_file", type=str)
     calibration_verify.add_argument("--expected", default="{}", type=str)
+    a2l_context = subparsers.add_parser(
+        "a2l-context",
+        help="从 A2L 功能组、枚举、范围和对象语义生成 AI 工程上下文",
+    )
+    a2l_context.add_argument("path", type=str)
+    a2l_context.add_argument("--output", type=str)
+    a2l_context.add_argument("--device", default="", type=str)
+    a2l_context.add_argument("--include-measurements", action="store_true")
+    a2l_context.add_argument("--function", default="", type=str)
+    a2l_context.add_argument("--group", default="", type=str)
+    a2l_context.add_argument("--query", default="", type=str)
     calibration_review = subparsers.add_parser(
         "calibration-review", help="查看标定变更集的功能组、页面、责任人和审批状态"
     )
@@ -536,6 +584,16 @@ def main(argv: list[str] | None = None) -> int:
         return _asset_manifest(args.paths, args.output)
     if args.command == "a2l-summary":
         return _a2l_summary(args.path)
+    if args.command == "a2l-context":
+        return _a2l_context(
+            args.path,
+            output=args.output,
+            device=args.device,
+            include_measurements=args.include_measurements,
+            function=args.function,
+            group=args.group,
+            query=args.query,
+        )
     if args.command == "calibration-convert":
         return _calibration_convert(args.source, args.output)
     if args.command == "calibration-verify":

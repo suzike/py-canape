@@ -7,8 +7,9 @@ Agent2Canape 3.1 将 A2L、HEX、标定数据集和版本仓库连接为可验�
 
 ## A2L 语义目录
 
-`A2LCatalog` 解析项目、模块、字节序、`COMPU_METHOD`、`RECORD_LAYOUT`、
-`MEASUREMENT`、`CHARACTERISTIC`、`AXIS_PTS`、`BLOB` 和 `AXIS_DESCR`。
+`A2LCatalog` 解析项目、模块、字节序、`COMPU_METHOD`、数值/文本/范围转换表、
+`RECORD_LAYOUT`、`MEASUREMENT`、`CHARACTERISTIC`、`AXIS_PTS`、`BLOB`、
+`AXIS_DESCR`、位掩码、功能/页面组和内存段。
 解析结果可直接转换为统一 `SignalDefinition`。
 
 ```python
@@ -18,11 +19,21 @@ catalog = A2LCatalog.parse("ThermalECU.a2l")
 print(catalog.summary())
 fan_map = catalog.get("FanDutyMap")
 print(fan_map.address, fan_map.unit, fan_map.axis_descriptors)
+print(fan_map.functions, fan_map.groups, fan_map.enum_values)
 ```
 
 ```powershell
 agent2canape a2l-summary .\ThermalECU.a2l
+agent2canape a2l-context .\ThermalECU.a2l `
+  --device HVAC --group ThermalCalibration `
+  --output .\build\thermal-context.json
 ```
+
+`to_engineering_context()` 和 `a2l-context` 默认只输出标定对象，可按 `FUNCTION`、`GROUP`
+或名称筛选；增加 `--include-measurements` 后同时输出测量量。生成结果带 A2L 文件
+SHA-256，可作为 AI 上下文模型版本，避免工程师手工复制对象名、范围和枚举表。
+MCP 的 `a2l_context` 工具默认最多返回 500 个对象，调用方应优先使用功能组或查询条件
+缩小范围，避免把整份大型 A2L 注入模型上下文。
 
 当前实现面向工程目录、身份校验和常用标定对象语义，不宣称覆盖 ASAP2 的全部可选关键字。
 企业扩展关键字应在项目验收样本中单独验证。

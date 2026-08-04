@@ -9,7 +9,7 @@
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![CANape](https://img.shields.io/badge/CANape-17.x-0EA5E9)](#canape-17-兼容性)
 [![Capabilities](https://img.shields.io/badge/Capabilities-140%2F140-14B8A6)](./CAPABILITIES.md)
-[![Tests](https://img.shields.io/badge/Tests-142%20passed-22C55E)](#质量与验证)
+[![Tests](https://img.shields.io/badge/Tests-145%20passed-22C55E)](#质量与验证)
 [![License](https://img.shields.io/badge/License-MIT-F59E0B)](./LICENSE)
 
 **ECU 标定 · AI Agent · 在线测量 · 离线分析 · 安全门禁 · 工程闭环**
@@ -54,7 +54,7 @@ CANape 项目、ECU 在线状态、MDF/BLF 数据、A2L/DBC 数据库、标定�
 | 对象建模 | 标量、枚举、ASCII、曲线、轴、二维 MAP、单位、范围、地址、转换规则 |
 | 在线读写 | 值和轴联合读写、维度校验、边界拦截、回读验证、失败回滚 |
 | 数据集 | JSON/CSV/CDFX/DCM/PAR 导入导出、SHA-256、差异、补丁、三方合并 |
-| A2L 语义 | 项目/模块、对象、地址、转换方法、记录布局、轴、单位和字节序 |
+| A2L 语义 | 对象、枚举/范围、位掩码、功能/页面组、内存段、转换、布局和轴 |
 | 版本管理 | 车辆/ECU/软件/A2L/HEX 身份绑定、并发提交、完整性巡检和基线冻结 |
 | 变更控制 | 变更计划、范围/梯度/单调/联动约束、审批、预览、事务提交 |
 | 物理约束 | MAP X/Y/对角邻域、轴向物理梯度和项目物理模型边界 |
@@ -68,6 +68,7 @@ CANape 项目、ECU 在线状态、MDF/BLF 数据、A2L/DBC 数据库、标定�
 | 优化 | 加权、坐标搜索、Pareto，以及安全高斯过程下一候选推荐 |
 | AI 驱动 | 自然语言规划、MCP 工具、参数摘要绑定、单次外部审批 |
 | AI 工程上下文 | ECU/对象别名消歧、单位换算、范围门禁和模型版本元数据 |
+| A2L 驱动 AI | A2L 自动生成上下文、功能组筛选、SHA-256 版本绑定和枚举值解析 |
 | 安全计划预览 | 当前值、目标值、差异、恢复快照及执行前基线一致性保护 |
 | 多 Agent 治理 | 会话标识、调用限流、跨进程 CANape 租约、摘要审计和状态查询 |
 
@@ -131,6 +132,9 @@ Codex、Claude Code 配置、审批协议和示例见
 
 ```powershell
 agent2canape context-validate examples\engineering_context.json
+agent2canape a2l-context .\ThermalECU.a2l `
+  --device HVAC --group ThermalCalibration `
+  --output .\build\thermal-context.json
 agent2canape ai-plan "把冷却液目标温度修改为 313.15 K" `
   --context-file examples\engineering_context.json `
   --reason "暖机响应优化"
@@ -139,6 +143,8 @@ agent2canape ai-plan "把冷却液目标温度修改为 313.15 K" `
 标定写入的 Dry-run 会实际读取当前值，输出目标差异、范围校验和恢复快照，并将当前
 状态摘要绑定到 Action Plan。审批后如果其他终端已改变该对象，执行会被拒绝并要求
 重新生成计划。
+A2L 中的文本枚举也会进入上下文，例如“把风扇模式设置为强制”可确定性解析为对应
+原始值；未知标签不会被模型猜测。
 
 ## 140 项工程能力
 
@@ -357,7 +363,7 @@ CANape 的 vMDM 附属进程可能在 `Quit` 后继续驻留。若短时间内�
 
 ```text
 Ruff                    All checks passed
-Pytest                  142 passed
+Pytest                  145 passed
 Capability contracts    140 / 140, unique and resolvable
 Dependency check        No broken requirements
 MDF / BLF / DBC         Real file round-trip passed

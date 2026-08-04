@@ -195,6 +195,31 @@ MCP 调用可把同一 JSON 对象作为 `agent2canape_plan_natural_language` �
 例如 `313.15 K` 会确定性换算为对象单位中的 `40 °C`，并在结果中记录源单位、目标单位
 和是否发生换算。
 
+### 从 A2L 自动生成 AI 上下文
+
+工程师不需要为每个 ECU 手工复制对象名、范围和枚举表。`a2l-context` 会读取 A2L 的
+标定对象、转换表、文本枚举、位掩码、`FUNCTION`、`GROUP` 和内存段目录，生成带
+A2L SHA-256 版本绑定的 JSON 上下文：
+
+```powershell
+agent2canape a2l-context .\ThermalECU.a2l `
+  --device HVAC `
+  --group ThermalCalibration `
+  --output .\build\thermal-context.json
+
+agent2canape context-validate .\build\thermal-context.json
+agent2canape ai-plan "把风扇模式设置为强制" `
+  --context-file .\build\thermal-context.json `
+  --reason "高温台架保护策略验证"
+```
+
+也可通过只读 MCP 工具 `agent2canape_a2l_context` 动态获取上下文。大文件应优先传入
+`function`、`group` 或 `query`；MCP 默认最多返回 500 个对象，最大 5000 个。默认只包含
+标定对象，只有显式设置 `include_measurements=true` 才包含测量量。
+
+A2L 文本枚举会以“显示标签→原始值”的受控方式参与规划。例如“强制”只在 A2L 明确
+定义该标签时才会转换；未知标签返回 `enum_error`，不会由模型猜测 ECU 原始值。
+
 ### 实时标定写入预览
 
 `calibration_write` 的 Dry-run 不再只展示用户提交参数，而是实际执行只读操作获取当前

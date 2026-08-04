@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import shlex
@@ -41,6 +42,14 @@ def _integer(value: str | None) -> int | None:
         return int(value, 0)
     except ValueError:
         return None
+
+
+def _scalar_number(value: str | None) -> float | None:
+    number = _number(value)
+    if number is not None:
+        return number
+    integer = _integer(value)
+    return float(integer) if integer is not None else None
 
 
 @dataclass(slots=True)
@@ -100,6 +109,15 @@ def _statements(block: _A2LBlock) -> dict[str, list[list[str]]]:
     return result
 
 
+def _child_values(block: _A2LBlock, kind: str) -> tuple[str, ...]:
+    return tuple(
+        value
+        for child in block.children
+        if child.kind == kind
+        for value in child.tokens
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class A2LCompuMethod:
     name: str
@@ -109,6 +127,46 @@ class A2LCompuMethod:
     unit: str = ""
     coefficients: tuple[float, ...] = ()
     table_ref: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class A2LCompuTable:
+    name: str
+    long_identifier: str = ""
+    kind: str = ""
+    values: dict[float, str | float] = field(default_factory=dict)
+    ranges: tuple[tuple[float, float, str], ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class A2LFunction:
+    name: str
+    long_identifier: str = ""
+    def_characteristics: tuple[str, ...] = ()
+    ref_characteristics: tuple[str, ...] = ()
+    in_measurements: tuple[str, ...] = ()
+    out_measurements: tuple[str, ...] = ()
+    sub_functions: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class A2LGroup:
+    name: str
+    long_identifier: str = ""
+    root: bool = False
+    ref_characteristics: tuple[str, ...] = ()
+    ref_measurements: tuple[str, ...] = ()
+    sub_groups: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class A2LMemorySegment:
+    name: str
+    long_identifier: str = ""
+    program_type: str = ""
+    address: int | None = None
+    size: int | None = None
+    offsets: tuple[int, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -142,6 +200,12 @@ class A2LObject:
     byte_order: str = ""
     dimensions: tuple[int, ...] = ()
     axis_descriptors: tuple[A2LAxisDescriptor, ...] = ()
+    bit_mask: int | None = None
+    functions: tuple[str, ...] = ()
+    groups: tuple[str, ...] = ()
+    memory_segments: tuple[str, ...] = ()
+    enum_values: dict[float, str] = field(default_factory=dict)
+    enum_ranges: tuple[tuple[float, float, str], ...] = ()
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
@@ -152,7 +216,11 @@ class A2LCatalog:
     module: str = ""
     byte_order: str = ""
     compu_methods: dict[str, A2LCompuMethod] = field(default_factory=dict)
+    compu_tables: dict[str, A2LCompuTable] = field(default_factory=dict)
     record_layouts: dict[str, A2LRecordLayout] = field(default_factory=dict)
+    functions: dict[str, A2LFunction] = field(default_factory=dict)
+    groups: dict[str, A2LGroup] = field(default_factory=dict)
+    memory_segments: dict[str, A2LMemorySegment] = field(default_factory=dict)
     objects: dict[str, A2LObject] = field(default_factory=dict)
 
     @classmethod
@@ -171,10 +239,49 @@ class A2LCatalog:
         if common:
             byte_order = _statements(common[0]).get("BYTE_ORDER", [[]])[0]
             catalog.byte_order = byte_order[0] if byte_order else ""
+        catalog._parse_compu_tables(root)
         catalog._parse_compu_methods(root)
         catalog._parse_record_layouts(root)
+        catalog._parse_functions(root)
+        catalog._parse_groups(root)
+        catalog._parse_memory_segments(root)
         catalog._parse_objects(root)
         return catalog
+
+    def _parse_compu_tables(self, root: _A2LBlock) -> None:
+        for kind in ("COMPU_TAB", "COMPU_VTAB", "COMPU_VTAB_RANGE"):
+            for block in _walk(root, kind):
+                values = block.tokens
+                if len(values) < 4:
+                    continue
+                count = _integer(values[3]) or 0
+                entries = values[4:]
+                table_values: dict[float, str | float] = {}
+                ranges: list[tuple[float, float, str]] = []
+                width = 3 if kind == "COMPU_VTAB_RANGE" else 2
+                for index in range(min(count, len(entries) // width)):
+                    chunk = entries[index * width : (index + 1) * width]
+                    if kind == "COMPU_VTAB_RANGE":
+                        lower = _scalar_number(chunk[0])
+                        upper = _scalar_number(chunk[1])
+                        if lower is not None and upper is not None:
+                            ranges.append((lower, upper, chunk[2]))
+                    else:
+                        source = _scalar_number(chunk[0])
+                        if source is None:
+                            continue
+                        target_number = _scalar_number(chunk[1])
+                        table_values[source] = (
+                            target_number if kind == "COMPU_TAB" and target_number is not None
+                            else chunk[1]
+                        )
+                self.compu_tables[values[0]] = A2LCompuTable(
+                    name=values[0],
+                    long_identifier=values[1],
+                    kind=kind,
+                    values=table_values,
+                    ranges=tuple(ranges),
+                )
 
     def _parse_compu_methods(self, root: _A2LBlock) -> None:
         for block in _walk(root, "COMPU_METHOD"):
@@ -211,6 +318,54 @@ class A2LCatalog:
             }
             self.record_layouts[values[0]] = A2LRecordLayout(values[0], fields)
 
+    def _parse_functions(self, root: _A2LBlock) -> None:
+        for block in _walk(root, "FUNCTION"):
+            values = block.tokens
+            if not values:
+                continue
+            self.functions[values[0]] = A2LFunction(
+                name=values[0],
+                long_identifier=values[1] if len(values) > 1 else "",
+                def_characteristics=_child_values(block, "DEF_CHARACTERISTIC"),
+                ref_characteristics=_child_values(block, "REF_CHARACTERISTIC"),
+                in_measurements=_child_values(block, "IN_MEASUREMENT"),
+                out_measurements=_child_values(block, "OUT_MEASUREMENT"),
+                sub_functions=_child_values(block, "SUB_FUNCTION"),
+            )
+
+    def _parse_groups(self, root: _A2LBlock) -> None:
+        for block in _walk(root, "GROUP"):
+            values = block.tokens
+            if not values:
+                continue
+            statements = _statements(block)
+            self.groups[values[0]] = A2LGroup(
+                name=values[0],
+                long_identifier=values[1] if len(values) > 1 else "",
+                root="ROOT" in statements,
+                ref_characteristics=_child_values(block, "REF_CHARACTERISTIC"),
+                ref_measurements=_child_values(block, "REF_MEASUREMENT"),
+                sub_groups=_child_values(block, "SUB_GROUP"),
+            )
+
+    def _parse_memory_segments(self, root: _A2LBlock) -> None:
+        for block in _walk(root, "MEMORY_SEGMENT"):
+            values = block.tokens
+            if not values:
+                continue
+            self.memory_segments[values[0]] = A2LMemorySegment(
+                name=values[0],
+                long_identifier=values[1] if len(values) > 1 else "",
+                program_type=values[2] if len(values) > 2 else "",
+                address=_integer(values[3] if len(values) > 3 else None),
+                size=_integer(values[4] if len(values) > 4 else None),
+                offsets=tuple(
+                    parsed
+                    for value in values[5:]
+                    if (parsed := _integer(value)) is not None
+                ),
+            )
+
     @staticmethod
     def _axis(block: _A2LBlock) -> A2LAxisDescriptor:
         values = block.tokens
@@ -224,6 +379,19 @@ class A2LCatalog:
         )
 
     def _parse_objects(self, root: _A2LBlock) -> None:
+        function_membership: dict[str, list[str]] = {}
+        for function in self.functions.values():
+            for name in (
+                *function.def_characteristics,
+                *function.ref_characteristics,
+                *function.in_measurements,
+                *function.out_measurements,
+            ):
+                function_membership.setdefault(name, []).append(function.name)
+        group_membership: dict[str, list[str]] = {}
+        for group in self.groups.values():
+            for name in (*group.ref_characteristics, *group.ref_measurements):
+                group_membership.setdefault(name, []).append(group.name)
         for kind in ("MEASUREMENT", "CHARACTERISTIC", "AXIS_PTS", "BLOB"):
             for block in _walk(root, kind):
                 values = block.tokens
@@ -271,6 +439,22 @@ class A2LCatalog:
                 physical_unit = statements.get("PHYS_UNIT", [[]])[0]
                 matrix_dim = statements.get("MATRIX_DIM", [[]])[0]
                 byte_order = statements.get("BYTE_ORDER", [[]])[0]
+                bit_mask_values = statements.get("BIT_MASK", [[]])[0]
+                bit_mask = _integer(bit_mask_values[0]) if bit_mask_values else None
+                table = self.compu_tables.get(method.table_ref) if method else None
+                enum_values = {
+                    key: str(value)
+                    for key, value in (table.values.items() if table else ())
+                    if isinstance(value, str)
+                }
+                memory_segments = tuple(
+                    segment.name
+                    for segment in self.memory_segments.values()
+                    if address is not None
+                    and segment.address is not None
+                    and segment.size is not None
+                    and segment.address <= address < segment.address + segment.size
+                )
                 axes = tuple(
                     self._axis(child) for child in block.children if child.kind == "AXIS_DESCR"
                 )
@@ -290,6 +474,12 @@ class A2LCatalog:
                         int(value, 0) for value in matrix_dim if _integer(value) is not None
                     ),
                     axis_descriptors=axes,
+                    bit_mask=bit_mask,
+                    functions=tuple(function_membership.get(values[0], ())),
+                    groups=tuple(group_membership.get(values[0], ())),
+                    memory_segments=memory_segments,
+                    enum_values=enum_values,
+                    enum_ranges=table.ranges if table else (),
                     metadata={
                         "format": (statements.get("FORMAT", [[""]])[0] or [""])[0],
                         "read_only": "READ_ONLY" in statements,
@@ -309,6 +499,9 @@ class A2LCatalog:
 
     def validate(self) -> dict[str, Any]:
         issues: list[str] = []
+        for method in self.compu_methods.values():
+            if method.table_ref and method.table_ref not in self.compu_tables:
+                issues.append(f"{method.name}: 未定义转换表 {method.table_ref}")
         for item in self.objects.values():
             if (
                 item.minimum is not None
@@ -337,6 +530,26 @@ class A2LCatalog:
                     issues.append(
                         f"{item.name}: 轴未定义转换方法 {axis.conversion}"
                     )
+        object_names = set(self.objects)
+        for function in self.functions.values():
+            for reference in (
+                *function.def_characteristics,
+                *function.ref_characteristics,
+                *function.in_measurements,
+                *function.out_measurements,
+            ):
+                if reference not in object_names:
+                    issues.append(f"{function.name}: 未定义对象 {reference}")
+            for reference in function.sub_functions:
+                if reference not in self.functions:
+                    issues.append(f"{function.name}: 未定义子功能 {reference}")
+        for group in self.groups.values():
+            for reference in (*group.ref_characteristics, *group.ref_measurements):
+                if reference not in object_names:
+                    issues.append(f"{group.name}: 未定义对象 {reference}")
+            for reference in group.sub_groups:
+                if reference not in self.groups:
+                    issues.append(f"{group.name}: 未定义子组 {reference}")
         return {"passed": not issues, "issues": issues}
 
     def summary(self) -> dict[str, Any]:
@@ -351,8 +564,103 @@ class A2LCatalog:
             "object_count": len(self.objects),
             "object_kinds": dict(sorted(kinds.items())),
             "compu_method_count": len(self.compu_methods),
+            "compu_table_count": len(self.compu_tables),
             "record_layout_count": len(self.record_layouts),
+            "function_count": len(self.functions),
+            "group_count": len(self.groups),
+            "memory_segment_count": len(self.memory_segments),
             **self.validate(),
+        }
+
+    def to_engineering_context(
+        self,
+        *,
+        device: str = "",
+        include_measurements: bool = False,
+        function: str = "",
+        group: str = "",
+        query: str = "",
+        limit: int = 0,
+    ) -> dict[str, Any]:
+        if limit < 0:
+            raise ValueError("limit 不能为负数")
+        if function:
+            function = next(
+                (name for name in self.functions if name.casefold() == function.casefold()),
+                "",
+            )
+            if not function:
+                raise KeyError("A2L 功能不存在")
+        if group:
+            group = next(
+                (name for name in self.groups if name.casefold() == group.casefold()),
+                "",
+            )
+            if not group:
+                raise KeyError("A2L 组不存在")
+        source = Path(self.source)
+        allowed_kinds = {"characteristic", "axis_pts"}
+        if include_measurements:
+            allowed_kinds.add("measurement")
+        objects = []
+        for item in sorted(self.objects.values(), key=lambda value: value.name.casefold()):
+            if item.kind not in allowed_kinds:
+                continue
+            if function and function not in item.functions:
+                continue
+            if group and group not in item.groups:
+                continue
+            if query and query.casefold() not in (
+                item.name + " " + item.long_identifier
+            ).casefold():
+                continue
+            aliases = [item.long_identifier] if item.long_identifier else []
+            objects.append(
+                {
+                    "device": device or self.module,
+                    "name": item.name,
+                    "aliases": aliases,
+                    "unit": item.unit,
+                    "kind": item.data_type.casefold() or item.kind,
+                    "minimum": item.minimum,
+                    "maximum": item.maximum,
+                    "metadata": {
+                        "a2l_kind": item.kind,
+                        "address": f"0x{item.address:X}" if item.address is not None else "",
+                        "conversion": item.conversion,
+                        "bit_mask": (
+                            f"0x{item.bit_mask:X}" if item.bit_mask is not None else ""
+                        ),
+                        "enum_values": {
+                            str(key): value for key, value in item.enum_values.items()
+                        },
+                        "enum_ranges": [list(value) for value in item.enum_ranges],
+                        "functions": list(item.functions),
+                        "groups": list(item.groups),
+                        "memory_segments": list(item.memory_segments),
+                    },
+                }
+            )
+        total_object_count = len(objects)
+        if limit:
+            objects = objects[:limit]
+        return {
+            "schema_version": 1,
+            "default_device": device or self.module,
+            "model_version": hashlib.sha256(source.read_bytes()).hexdigest(),
+            "source": str(source),
+            "project": self.project,
+            "module": self.module,
+            "selection": {
+                "function": function,
+                "group": group,
+                "query": query,
+                "include_measurements": include_measurements,
+                "total_object_count": total_object_count,
+                "returned_object_count": len(objects),
+                "truncated": len(objects) < total_object_count,
+            },
+            "objects": objects,
         }
 
     def to_signal_definitions(self) -> list[Any]:
@@ -384,6 +692,12 @@ class A2LCatalog:
                         }
                         for axis in item.axis_descriptors
                     ],
+                    "bit_mask": item.bit_mask,
+                    "functions": list(item.functions),
+                    "groups": list(item.groups),
+                    "memory_segments": list(item.memory_segments),
+                    "enum_values": dict(item.enum_values),
+                    "enum_ranges": [list(value) for value in item.enum_ranges],
                 },
             )
             for item in self.objects.values()

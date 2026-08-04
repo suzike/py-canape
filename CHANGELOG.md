@@ -1,5 +1,20 @@
 # 变更记录
 
+## 3.7.0 - 2026-08-04
+
+- A2L 语义目录新增 `COMPU_TAB`、`COMPU_VTAB`、`COMPU_VTAB_RANGE`，支持数值表、
+  文本枚举和枚举范围；
+- 新增 `BIT_MASK`、`FUNCTION`、`GROUP` 和 `MEMORY_SEGMENT` 解析，对象可反查所属功能组、
+  页面组、枚举、位掩码和存储段目录；
+- 新增 A2L 引用完整性校验，检查转换表、功能对象、子功能、组对象和子组引用；
+- 新增 `A2LCatalog.to_engineering_context()`，可按 ECU、功能、组、名称和对象类型筛选，
+  并用 A2L SHA-256 绑定 AI 上下文版本；
+- CLI 新增 `a2l-context`，可直接生成供 Codex、Claude Code 和自然语言规划器使用的
+  JSON 工程上下文；
+- MCP 新增只读 `a2l_context` 工具，设置输出上限，避免大 A2L 无界注入模型上下文；
+- 自然语言规划器支持把 A2L 文本枚举标签确定性转换为 ECU 原始值，未知枚举明确拒绝；
+- 新增 A2L 高级语义、上下文筛选、枚举规划、CLI 和 MCP 测试，累计 145 项自动化测试。
+
 ## 3.6.0 - 2026-08-04
 
 - 新增可校验 MCP 会话标识，Codex、Claude Code 和其他 stdio 客户端可使用独立会话名；
